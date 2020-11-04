@@ -166,7 +166,7 @@ def processInput_trends(tuple_limits1,tuple_limits2,parent_iteration,child_itera
 
             '''we put 999 for missing values so as to validate with fortran code; man-kendall scores are estimated by a fortran file
             already imported'''
-            p,z,Sn,nx = m.mk_trend(len(data_test),np.arange(len(data_test)),data_test)
+            p,z,Sn,nx = m.mk_trend(len(data_test), np.arange(len(data_test)), data_test)
             #p,z,Sn,nx = [0,0,0,0] 
 
             if b_deb:
@@ -181,12 +181,17 @@ def processInput_trends(tuple_limits1,tuple_limits2,parent_iteration,child_itera
             var_temp_output[ii_sub,jj_sub,2] = Sn
             var_temp_output[ii_sub,jj_sub,3] = nx
 
-        t_mean += timer()-t00
-        #print(f't00 {ii_sub} {t_mean/(ii_sub+1)}')
-        print(f't00.p{current._identity[0]}.it{ii_sub} {t_mean/(ii_sub+1):.3f}s {process.memory_info().rss/1024/1024:.2f}Mo')
-        t00 = timer()
+        if 0:
+            t_mean += timer()-t00
+            #print(f't00 {ii_sub} {t_mean/(ii_sub+1)}')
+            print(f't00.p{current._identity[0]}.it{ii_sub} {t_mean/(ii_sub+1):.3f}s {process.memory_info().rss/1024/1024:.2f}Mo')
+            v = var_temp_output[ii_sub,:,:]
+            for ii in range(4):
+                print(f'{np.count_nonzero(np.isnan(v[:,ii]))/v[:,ii].size:.3f}', np.nanmin(v[:,ii]), np.nanmax(v[:,ii]))
+            print(np.nanmin(v), np.nanmax(v))
+            t00 = timer()
     
-    print(f'ttot.p{current._identity[0]} {timer()-t000:.3f}s {process.memory_info().rss/1024/1024:.2f}Mo')
+    print(f't000tot.p{current._identity[0]} {timer()-t000:.3f}s {process.memory_info().rss/1024/1024:.2f}Mo')
     print('pool completed:  Blocks #### Row :',tuple_limits1,'TO :',tuple_limits1+step_chunk1,'#### Column :',tuple_limits2,'TO :',tuple_limits2+step_chunk2)
     write_string0 = ("ITERATION_MASTER_" + np.str(parent_iteration)  
                      + "_ITERATION_CHILD_" + np.str(child_iteration)  
@@ -250,26 +255,29 @@ def main():
     if choice=='ALBEDO' and product_tag=='albedo':
         print('ALBEDO process')
 #        inpath_final=input_path+'/'
-        inpath_final=input_path+'/'+product_tag+'/'
-        outpath_final=output_path+'/'+product_tag+'/'
+        inpath_final = input_path+'/'+product_tag+'/'
+        outpath_final = output_path+'/'+product_tag+'/'
     if choice=='LST' and product_tag=='lst':
         print('LST process')
-        inpath_final=input_path+'/'+product_tag+'/'
-        outpath_final=output_path+'/'+product_tag+'/'
+        inpath_final = input_path+'/'+product_tag+'/'
+        outpath_final = output_path+'/'+product_tag+'/'
     if choice=='LAI' and  product_tag=='lai':
         print('LAI process')
 #        inpath_final=input_path+'/'
-        inpath_final=input_path+'/'+product_tag+'/'
-        outpath_final=output_path+'/'+product_tag+'/'
+        inpath_final = input_path+'/'+product_tag+'/'
+        outpath_final = output_path+'/'+product_tag+'/'
     if choice=='EVAPO' and product_tag=='evapo':
         print('EVAPO process')
-        inpath_final=input_path+'/'+product_tag+'/'
-        outpath_final=output_path+'/'+product_tag+'/'
+        inpath_final = input_path+'/'+product_tag+'/'
+        outpath_final = output_path+'/'+product_tag+'/'
     if choice=='DSSF' and product_tag=='dssf':
         print('DSSF process')
 #        inpath_final=input_path+'/'
-        inpath_final=input_path+'/'+product_tag+'/'
-        outpath_final=output_path+'/'+product_tag+'/'
+        inpath_final = input_path+'/'+product_tag+'/'
+        outpath_final = output_path+'/'+product_tag+'/'
+
+    inpath_final = os.path.normpath(inpath_final) + os.sep
+    outpath_final = os.path.normpath(outpath_final) + os.sep
 
     start = datetime(start_year,start_month,1,0,0,0)
     end = datetime(end_year,end_month,1,0,0,0)
@@ -321,7 +329,7 @@ def main():
     
            ''' Applying the multiple processing here, with process of choice, i use 4 for local and 16 for lustre '''
            ''' Here we pass the arguments to the initializer for pool so we use in the function used in multiple processing, it can be changed differently '''
-           nproc = 4
+           nproc = 1
            with Pool(processes=nproc, initializer=init_worker_nc, initargs=(var_dict,X_shape,Y_shape,step_chunk_x,step_chunk_y,final_chunk_x,final_chunk_y,start_chunk_x,start_chunk_y,in_file,outpath_final,iteration_final,indx_seasons[0])) as pool:
                '''I am not returning results, usually you can return and write the results after multiprocessing '''
                print('pool started')

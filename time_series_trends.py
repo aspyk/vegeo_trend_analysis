@@ -262,45 +262,46 @@ def time_series_lai(start_year,end_year,start_month,end_month,output_path,produc
                    day=np.int(ymdtag[6:8])
                    hour=np.int(ymdtag[8:10])
     
-                   dayindex=np.where(np.logical_and(series.day==day,series.month==month) & np.logical_and(series.year==year,series.month==month))
+                   dayindex = np.where(np.logical_and(series.day==day,series.month==month) & np.logical_and(series.year==year,series.month==month))
     
-                   dayindex=np.array(dayindex)
-                   rindx,cindx=dayindex.shape
-                   print (cindx) 
+                   dayindex = np.array(dayindex)
+                   rindx,cindx = dayindex.shape
+                   print(cindx) 
                    if(cindx==1):
     
-                       file=file_iter
-                       print (file, iter_row, iter_col)
-                       fid=h5py.File(file,'r')
+                       file = file_iter
+                       print(file, iter_row, iter_col)
+                       fid = h5py.File(file,'r')
                                      
-                       LAI=np.array(fid['LAI'][chunks_row_final[iter_row]:chunks_row_final[iter_row+1],chunks_col_final[iter_col]:chunks_col_final[iter_col+1]],dtype='f')
+                       LAI = np.array(fid['LAI'][chunks_row_final[iter_row]:chunks_row_final[iter_row+1],chunks_col_final[iter_col]:chunks_col_final[iter_col+1]],dtype='f')
                        
-                       print (LAI.shape)
-                       xshape,yshape=LAI.shape[0],LAI.shape[1]
-                       LAI=np.reshape(LAI,[xshape*yshape])
+                       print(LAI.shape)
+                       xshape,yshape = LAI.shape[0],LAI.shape[1]
+                       LAI = np.reshape(LAI,[xshape*yshape])
                            
-                       LAI[LAI==-10]=np.NaN
+                       LAI[LAI==-10] = np.NaN
                        
-                       LAI=LAI/1000.     
+                       LAI = LAI/1000.     
                        
-                       LAI=np.reshape(LAI,[xshape,yshape])
+                       LAI = np.reshape(LAI,[xshape,yshape])
                        
                        
                        
-                       pandas_series_lai[dayindex[0][0],:]=LAI
+                       pandas_series_lai[dayindex[0][0],:] = LAI
     #                   cnt+=1
                    else:
                         
                         pass
             
                except:
-    #                print ('File not found moving to next file, assigning NaN to extacted pixel')
+                    print("error")
+    #                print('File not found moving to next file, assigning NaN to extacted pixel')
     #                cnt+=1                    
             
                     pass		
     
            '''Write time series of the data for each master iteration '''
-           write_file=output_path+product_tag+'/store_time_series_'+np.str(chunks_row_final[iter_row])+'_'+np.str(chunks_row_final[iter_row+1])+'_'+np.str(chunks_col_final[iter_col])+'_'+np.str(chunks_col_final[iter_col+1])+'_.nc'
+           write_file = output_path+product_tag+'/store_time_series_'+np.str(chunks_row_final[iter_row])+'_'+np.str(chunks_row_final[iter_row+1])+'_'+np.str(chunks_col_final[iter_col])+'_'+np.str(chunks_col_final[iter_col+1])+'_.nc'
 
            nc_iter = Dataset(write_file, 'w', format='NETCDF4')
            
@@ -308,11 +309,12 @@ def time_series_lai(start_year,end_year,start_month,end_month,output_path,produc
            nc_iter.createDimension('y', pandas_series_lai.shape[1])
            nc_iter.createDimension('z', pandas_series_lai.shape[2])
            
-           var1 = nc_iter.createVariable('time_series_chunk', np.float, ('x','y','z'),zlib=True)
-           nc_iter.variables['time_series_chunk'][:]=pandas_series_lai
+           var1 = nc_iter.createVariable('time_series_chunk', np.float, ('x','y','z'), zlib=True)
+           nc_iter.variables['time_series_chunk'][:] = pandas_series_lai
                
            nc_iter.close()
            del pandas_series_lai      
+           print(f'Time series file written to: {write_file}')
     
 
 def  time_series_lst(start_year,end_year,start_month,end_month,output_path,product_tag,xlim1,xlim2,ylim1,ylim2,nmaster):
