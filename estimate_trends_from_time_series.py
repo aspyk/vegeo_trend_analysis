@@ -25,7 +25,7 @@ import matplotlib.pyplot as plt
 import psutil
 
 
-def parse_args():
+def parse_args(command=None):
     parser = argparse.ArgumentParser(description='The parameters are being given as arguments for input time series,', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('-styr','--start_year', help='start year for read of time series')    
     parser.add_argument('-enyr','--end_year', help='end year for read of time series')    
@@ -40,9 +40,11 @@ def parse_args():
     parser.add_argument('-y2','--ylim2', help='limit y2 ')    
     parser.add_argument('-n_master','--master_chunk', help='size of master chunks')
     
-    parser.add_argument('-c','--choice', help='product tag or product dataset, either ALBEDO, LAI, EVAPO, DSSF, FAPAR ')    
-    parser.add_argument('-l', '--loglevel', help='log level. CRITICAL ERROR WARNING INFO or DEBUG', default='ERROR')
-    args = parser.parse_args()
+    #parser.add_argument('-l', '--loglevel', help='log level. CRITICAL ERROR WARNING INFO or DEBUG', default='ERROR')
+    if command is not None:
+        args = parser.parse_args(command)
+    else:
+        args = parser.parse_args()
     return args
 
     
@@ -80,33 +82,48 @@ def processInput_trends(tuple_limits1,tuple_limits2,parent_iteration,child_itera
     '''tuple_limits2 and tuple_limits1 correspond to first indices of the bounding box in the iteration'''
     '''currently nchild or child chunks are set to 100 X 100 only, irrespective of master size; eg., 500 X 500 box contain 25 100 X 100 child chunks '''
     if tuple_limits2==3700: 
-        step_chunk2=12
+        step_chunk2 = 12
     else: 
-        step_chunk2=nchild
+        step_chunk2 = nchild
   
     if tuple_limits1==3700:
-        step_chunk1=12
+        step_chunk1 = 12
     else:
-        step_chunk1=nchild
+        step_chunk1 = nchild
 
 
-
-    '''Create temporary storage with size of sub chunks in main chunk, currently configured 100 by 100 blocks'''
-    var_temp_output=np.empty([step_chunk1,step_chunk2,4])    
-    var_temp_output[:]=np.NaN
-    '''NaN matrix by default '''
+    # Create temporary storage with size of sub chunks in main chunk, currently configured 100 by 100 blocks
+    var_temp_output = np.empty([step_chunk1,step_chunk2,4])    
+    var_temp_output[:] = np.NaN
+    # NaN matrix by default
     print ('pool worker started: ')
     
     print('Blocks #### Row :',tuple_limits1,'TO :',tuple_limits1+step_chunk1,'#### Column :',tuple_limits2,'TO :',tuple_limits2+step_chunk2)
 
-    iter_subchunk_x= tuple_limits1-var_dict['start_chunk_x']
-    iter_subchunk_y= tuple_limits2-var_dict['start_chunk_y']
+    iter_subchunk_x = tuple_limits1 - var_dict['start_chunk_x']
+    iter_subchunk_y = tuple_limits2 - var_dict['start_chunk_y']
     
 
-    sub_chunks_x=np.arange(iter_subchunk_x,iter_subchunk_x+step_chunk1,1)
-    sub_chunks_y=np.arange(iter_subchunk_y,iter_subchunk_y+step_chunk2,1)
+    print("hdf_ts.variables['time_series_chunk'].shape:", hdf_ts.variables['time_series_chunk'].shape)
+    print('iter_subchunk_x:',iter_subchunk_x, 'step_chunk1:', step_chunk1)
+    print('iter_subchunk_y:',iter_subchunk_y, 'step_chunk2:', step_chunk2)
 
-    print(hdf_ts.variables['time_series_chunk'].shape)
+    # Reduce loop indices to fit the shape of data shape is no nchild multiple
+    if iter_subchunk_x+step_chunk1>hdf_ts.variables['time_series_chunk'].shape[1]:
+       bnd_end_x = hdf_ts.variables['time_series_chunk'].shape[1]
+    else:
+       bnd_end_x = iter_subchunk_x+step_chunk1
+    
+    if iter_subchunk_y+step_chunk2>hdf_ts.variables['time_series_chunk'].shape[2]:
+       bnd_end_y = hdf_ts.variables['time_series_chunk'].shape[2]
+    else:
+       bnd_end_y = iter_subchunk_y+step_chunk2
+
+    # sub_chunks_x = np.arange(iter_subchunk_x, iter_subchunk_x+step_chunk1, 1)
+    # sub_chunks_y = np.arange(iter_subchunk_y, iter_subchunk_y+step_chunk2, 1)
+    sub_chunks_x = np.arange(iter_subchunk_x, bnd_end_x, 1)
+    sub_chunks_y = np.arange(iter_subchunk_y, bnd_end_y, 1)
+
 
     b_deb = 0 # flag to print time profiling
     t00 = timer()
@@ -118,6 +135,7 @@ def processInput_trends(tuple_limits1,tuple_limits2,parent_iteration,child_itera
         # preload all the y data here to avoid overhead due to calling Dataset.variables at each iteration in the inner loop
         data_test0 = hdf_ts.variables['time_series_chunk'][:,sub_chunks_x[ii_sub],:]
         #data_test0 = hdf_ts.variables['time_series_chunk'][:500,sub_chunks_x[ii_sub],:]
+        #print(f'ii_sub:{ii_sub} ({sub_chunks_x[0]},{sub_chunks_x[-1]})', f'len(sub_chunks_y):{len(sub_chunks_y)} ({sub_chunks_y[0]},{sub_chunks_y[-1]})')
         for jj_sub in range(len(sub_chunks_y)):
             if b_deb: print('---------------')
             if b_deb: print(f'{ii_sub} ({sub_chunks_x[0]},{sub_chunks_x[-1]})', f'{jj_sub} ({sub_chunks_y[0]},{sub_chunks_y[-1]})')
@@ -166,8 +184,13 @@ def processInput_trends(tuple_limits1,tuple_limits2,parent_iteration,child_itera
 
             '''we put 999 for missing values so as to validate with fortran code; man-kendall scores are estimated by a fortran file
             already imported'''
-            p,z,Sn,nx = m.mk_trend(len(data_test), np.arange(len(data_test)), data_test)
-            #p,z,Sn,nx = [0,0,0,0] 
+            if 1:
+                ## orinal mann-kendall test :
+                p,z,Sn,nx = m.mk_trend(len(data_test), np.arange(len(data_test)), data_test)
+            else:
+                ## other test
+                p,z,Sn,nx = [0,0,0,0] 
+                z = data_test.mean()
 
             if b_deb:
                 print('t4', timer()-t0)
@@ -227,69 +250,72 @@ def processInput_trends(tuple_limits1,tuple_limits2,parent_iteration,child_itera
         print ('Pool process worker finished: ')
    
         hdf_ts.close() 
+    
+        with open(os.path.normpath(var_dict['file_output_tendencies'] + '/filelist.txt'),'a') as fl:
+            fl.write(write_string0+'\n')
+        
         return None 
 
+
+
 def main():
-    args = parse_args()
 
-    start_year=int(args.start_year)
-    end_year=int(args.end_year)
+    start_year = int(args.start_year)
+    end_year = int(args.end_year)
     
-    start_month=int(args.start_month)
-    end_month=int(args.end_month)
+    start_month = int(args.start_month)
+    end_month = int(args.end_month)
     
-    input_path=args.input
+    input_path = args.input
 
-    output_path=args.output
+    output_path = args.output
     
-    product_tag=args.product_tag
+    product_tag = args.product_tag
     
-    xlim1=int(args.xlim1)
-    xlim2=int(args.xlim2)
-    ylim1=int(args.ylim1)
-    ylim2=int(args.ylim2)
-    nmaster=int(args.master_chunk)
+    xlim1 = int(args.xlim1)
+    xlim2 = int(args.xlim2)
+    ylim1 = int(args.ylim1)
+    ylim2 = int(args.ylim2)
+    nmaster = int(args.master_chunk)
     
-    choice=args.choice
-    
-    if choice=='ALBEDO' and product_tag=='albedo':
+    if product_tag=='albedo':
         print('ALBEDO process')
-#        inpath_final=input_path+'/'
         inpath_final = input_path+'/'+product_tag+'/'
         outpath_final = output_path+'/'+product_tag+'/'
-    if choice=='LST' and product_tag=='lst':
+    if product_tag=='lst':
         print('LST process')
         inpath_final = input_path+'/'+product_tag+'/'
         outpath_final = output_path+'/'+product_tag+'/'
-    if choice=='LAI' and  product_tag=='lai':
+    if product_tag=='lai':
         print('LAI process')
-#        inpath_final=input_path+'/'
         inpath_final = input_path+'/'+product_tag+'/'
         outpath_final = output_path+'/'+product_tag+'/'
-    if choice=='EVAPO' and product_tag=='evapo':
+    if product_tag=='evapo':
         print('EVAPO process')
         inpath_final = input_path+'/'+product_tag+'/'
         outpath_final = output_path+'/'+product_tag+'/'
-    if choice=='DSSF' and product_tag=='dssf':
+    if product_tag=='dssf':
         print('DSSF process')
-#        inpath_final=input_path+'/'
         inpath_final = input_path+'/'+product_tag+'/'
         outpath_final = output_path+'/'+product_tag+'/'
 
     inpath_final = os.path.normpath(inpath_final) + os.sep
     outpath_final = os.path.normpath(outpath_final) + os.sep
 
+    # Empty list of data files used further for plotting
+    with open(outpath_final + '/filelist.txt', 'w'): pass
+
     start = datetime(start_year,start_month,1,0,0,0)
     end = datetime(end_year,end_month,1,0,0,0)
-    series=pd.bdate_range(start, end, freq='D')
+    series = pd.bdate_range(start, end, freq='D')
     ''' one can select trends only for a particular season here; currently hard coded; can be given as arguments if wanted'''
-    indx_seasons=np.where(np.logical_or(np.logical_or(series.month==6,series.month==7), np.logical_or(series.month==7,series.month==8)))
+    indx_seasons = np.where(np.logical_or(np.logical_or(series.month==6,series.month==7), np.logical_or(series.month==7,series.month==8)))
     
-    row_chunk_main=np.arange(xlim1,xlim2,nmaster)
-    col_chunk_main=np.arange(ylim1,ylim2,nmaster)
+    row_chunk_main = np.arange(xlim1, xlim2, nmaster)
+    col_chunk_main = np.arange(ylim1, ylim2, nmaster)
     '''currently tested to 500 X 500 size chunks, but can be changed to other master chunks 100, 200 etc., not less than 100 or in between two integrals '''
-    chunks_row_final=np.append(row_chunk_main,[xlim2],axis=0)
-    chunks_col_final=np.append(col_chunk_main,[ylim2],axis=0)
+    chunks_row_final = np.append(row_chunk_main, [xlim2], axis=0)
+    chunks_col_final = np.append(col_chunk_main, [ylim2], axis=0)
 
 #    nchild=int(nmaster/5)
     nchild=100
@@ -297,39 +323,39 @@ def main():
     for iter_row in range(len(chunks_row_final[:]))[0:-1]:
        for iter_col in range(len(chunks_col_final[:]))[0:-1]:
            print("LOOP:", iter_row,iter_col)
-           '''Write time series of the data for each master iteration '''
-           in_file=inpath_final+'store_time_series_'+np.str(chunks_row_final[iter_row])+'_'+np.str(chunks_row_final[iter_row+1])+'_'+np.str(chunks_col_final[iter_col])+'_'+np.str(chunks_col_final[iter_col+1])+'_.nc'
-           '''calculate trend from the each time series of master chunks''' 
+           # Write time series of the data for each master iteration
+           in_file = inpath_final+'store_time_series_'+np.str(chunks_row_final[iter_row])+'_'+np.str(chunks_row_final[iter_row+1])+'_'+np.str(chunks_col_final[iter_col])+'_'+np.str(chunks_col_final[iter_col+1])+'_.nc'
+           # Calculate trend from the each time series of master chunks 
            print('calculating trend for the chunk') 
            print(chunks_row_final[iter_row],chunks_row_final[iter_row+1],chunks_col_final[iter_col],chunks_col_final[iter_col+1],'***Row_SIZE***',chunks_row_final[iter_row+1]-chunks_row_final[iter_row],'***Col_SIZE***',chunks_col_final[iter_col+1]-chunks_col_final[iter_col]) 
            print(in_file)
            X_shape, Y_shape=chunks_row_final[iter_row+1]-chunks_row_final[iter_row],chunks_col_final[iter_col+1]-chunks_col_final[iter_col]
            
-           '''Creation of sub chunks of 100 by 100 to estimate trends in Master 500 by 500 '''
-           '''one can use 500 by 500 sub chunks to estimate trends if Master is by 1000 by 1000 '''
-           mainchunks_x=np.arange(chunks_row_final[iter_row],chunks_row_final[iter_row+1],nchild)
-           '''one can use 500 instead of 100 sub chunks to estimate trends if Master is by 1000 by 1000 '''
-           mainchunks_y=np.arange(chunks_col_final[iter_col],chunks_col_final[iter_col+1],nchild)
-           '''one can us e 500 instead of 100 sub chunks to estimate trends if Master is by 1000 by 1000 '''
+           # Creation of sub chunks of 100 by 100 to estimate trends in Master 500 by 500
+           # one can use 500 by 500 sub chunks to estimate trends if Master is by 1000 by 1000
+           mainchunks_x = np.arange(chunks_row_final[iter_row],chunks_row_final[iter_row+1],nchild)
+           # one can use 500 instead of 100 sub chunks to estimate trends if Master is by 1000 by 1000
+           mainchunks_y = np.arange(chunks_col_final[iter_col],chunks_col_final[iter_col+1],nchild)
+           # one can us e 500 instead of 100 sub chunks to estimate trends if Master is by 1000 by 1000
     
-           step_chunk_x=chunks_row_final[iter_row+1]-chunks_row_final[iter_row]
-           step_chunk_y=chunks_col_final[iter_col+1]-chunks_col_final[iter_col]
+           step_chunk_x = chunks_row_final[iter_row+1]-chunks_row_final[iter_row]
+           step_chunk_y = chunks_col_final[iter_col+1]-chunks_col_final[iter_col]
            
-           final_chunk_x=chunks_row_final[iter_row+1]
-           final_chunk_y=chunks_col_final[iter_col+1]
+           final_chunk_x = chunks_row_final[iter_row+1]
+           final_chunk_y = chunks_col_final[iter_col+1]
            
-           start_chunk_x=chunks_row_final[iter_row]
-           start_chunk_y=chunks_col_final[iter_col]
+           start_chunk_x = chunks_row_final[iter_row]
+           start_chunk_y = chunks_col_final[iter_col]
           
-           inputdata=[mainchunks_x,mainchunks_y]
+           inputdata = [mainchunks_x,mainchunks_y]
            result_main_chunks = list(itertools.product(*inputdata))
-           result_chunks=[(result_main_chunks[i][0],result_main_chunks[i][1],main_block_iteration,i, nchild) for i in range(len(result_main_chunks))]
+           result_chunks = [(result_main_chunks[i][0],result_main_chunks[i][1],main_block_iteration,i, nchild) for i in range(len(result_main_chunks))]
            #print (result_chunks)
-           iteration_final=len(result_chunks)-1
+           iteration_final = len(result_chunks)-1
     
            ''' Applying the multiple processing here, with process of choice, i use 4 for local and 16 for lustre '''
            ''' Here we pass the arguments to the initializer for pool so we use in the function used in multiple processing, it can be changed differently '''
-           nproc = 1
+           nproc = 4
            with Pool(processes=nproc, initializer=init_worker_nc, initargs=(var_dict,X_shape,Y_shape,step_chunk_x,step_chunk_y,final_chunk_x,final_chunk_y,start_chunk_x,start_chunk_y,in_file,outpath_final,iteration_final,indx_seasons[0])) as pool:
                '''I am not returning results, usually you can return and write the results after multiprocessing '''
                print('pool started')
@@ -341,14 +367,32 @@ def main():
            main_block_iteration+=1
 
 
+def compute_trends(sy, ey, sm, em, inp, outp, prod, x1, x2, y1, y2, nmaster):
+    # Lock is the module from multiprocessing to allow the write of netcdf files one at a time to avoid conflict, first invocation here in main
+
+    global lock 
+    global var_dict 
+
+    lock = Lock()
+    var_dict = {}
+
+    command = ['--start_year', sy, '--end_year', ey, '--start_month', sm, '--end_month', em,
+               '--input', inp, '--output', outp, '--product_tag', prod,
+               '--xlim1', x1, '--xlim2', x2, '--ylim1', y1, '--ylim2', y2,
+               '--master_chunk', nmaster]
+
+    global args 
+    args = parse_args(command)
+    main()
+
+
 
 if __name__ == "__main__":
     try:
-        """ runs the concatenation of timeserie of albedo, lai and fapar"""
+        # Lock is the module from multiprocessing to allow the write of netcdf files one at a time to avoid conflict, first invocation here in main
         lock = Lock()
         var_dict = {}
-
-        '''Lock is the module from multiprocessing to allow the write of netcdf files one at a time to avoid conflict, first invocation here in main '''
+        args = parse_args()
         main()
     
     except Exception:

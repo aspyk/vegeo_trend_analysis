@@ -245,22 +245,22 @@ def time_series_lai(start_year,end_year,start_month,end_month,output_path,produc
            print(iter_row,iter_col)
            print(chunks_row_final[iter_row],chunks_row_final[iter_row+1],chunks_col_final[iter_col],chunks_col_final[iter_col+1],'***Row_SIZE***',chunks_row_final[iter_row+1]-chunks_row_final[iter_row],'***Col_SIZE***',chunks_col_final[iter_col+1]-chunks_col_final[iter_col]) 
            
-           pandas_series_lai=np.empty([len(file_paths_final),chunks_row_final[iter_row+1]-chunks_row_final[iter_row],chunks_col_final[iter_col+1]-chunks_col_final[iter_col]])
-           pandas_series_lai[:]=np.NaN
+           pandas_series_lai = np.empty([len(file_paths_final),chunks_row_final[iter_row+1]-chunks_row_final[iter_row],chunks_col_final[iter_col+1]-chunks_col_final[iter_col]])
+           pandas_series_lai[:] = np.NaN
     #       cnt=0             
            for f in range(len(file_paths_final)):
                '''Read time series of the data '''
                try:
                    
                    '''Reading MSG LAI 10 daily ''' 
-                   file_iter=file_paths_final[f]
-                   dayinformation=re.findall(r"[-+]?\d*\.\d+|\d+", file_iter)
-                   ymdtag=dayinformation[-1]
+                   file_iter = file_paths_final[f]
+                   dayinformation = re.findall(r"[-+]?\d*\.\d+|\d+", file_iter)
+                   ymdtag = dayinformation[-1]
     
-                   year=np.int(ymdtag[0:4])
-                   month=np.int(ymdtag[4:6])
-                   day=np.int(ymdtag[6:8])
-                   hour=np.int(ymdtag[8:10])
+                   year = np.int(ymdtag[0:4])
+                   month = np.int(ymdtag[4:6])
+                   day = np.int(ymdtag[6:8])
+                   hour = np.int(ymdtag[8:10])
     
                    dayindex = np.where(np.logical_and(series.day==day,series.month==month) & np.logical_and(series.year==year,series.month==month))
     
