@@ -35,7 +35,7 @@ def parse_args():
                         choices=['Euro', 'NAfr', 'SAfr', 'SAme'])
     parser.add_argument('-a','--action',
                         help='Action to run between extract, group, trend, plot',
-                        choices=['extract', 'group', 'trend', 'plot'],
+                        choices=['extract', 'append', 'trend', 'merge', 'plot'],
                         nargs='+',
                         required=True)
     parser.add_argument('-n_master','--master_chunk',
@@ -150,6 +150,26 @@ def main():
             str_arg = [str(i) for i in [start_year, end_year, start_month, end_month, input_path, output_path, prod, xlim1, xlim2, ylim1, ylim2, nmaster]]
             estimate_trends_from_time_series.compute_trends(*str_arg)
 
+    # MERGE
+    #------------------------------------------------#
+    if 'merge' in args.action:
+        print('>>> '+yellow('Merge trends')+'...')
+
+        import trend_file_merger
+
+        input_path = './output_tendencies/'
+
+        for prod in args.product_tag:
+            print('  Process {0}'.format(yellow(prod)))
+            
+            input_path += '/'+prod 
+            input_path = os.path.normpath(input_path) + os.sep
+
+            merged_filename = 'merged_trends.nc'
+
+            list_arg = [input_path, merged_filename, xlim1, xlim2, ylim1, ylim2, nmaster]
+            trend_file_merger.merge_trends(*list_arg)
+
     # PLOT
     #------------------------------------------------#
     if 'plot' in args.action:
@@ -175,8 +195,10 @@ def main():
            
             merged_filename = 'merged_trends.nc'
 
-            list_arg = [input_path, output_path, merged_filename, xlim1, xlim2, ylim1, ylim2, nmaster, 'title_test', 'zval', 365]
-            trend_file_merger.plot_trends(*list_arg)
+            for var in ['sn','zval','pval','len']:
+                list_arg = [input_path, output_path, merged_filename, xlim1, xlim2, ylim1, ylim2,
+                            f'{var} from {args.start_date.isoformat()} to {args.end_date.isoformat()}', var, 365]
+                trend_file_merger.plot_trends(*list_arg)
 
 
 if __name__ == "__main__":
