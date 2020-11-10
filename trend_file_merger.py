@@ -183,7 +183,8 @@ def plot_trends(input_path, output_path, file_trend_name, xlim1, xlim2, ylim1, y
 
     if plot_choice=='sn':
         #imm = dx.plot(x='lon', y='lat',transform=ccrs.PlateCarree(), subplot_kws={'projection': proj}, vmin=-1E-5, vmax=1E-5, cmap='RdBu_r', add_colorbar=False, extend='neither', ax=ax)
-        imm = dx.plot(x='lon', y='lat',transform=ccrs.PlateCarree(), vmin=-1E-5, vmax=1E-5, cmap='RdBu_r', add_colorbar=False, extend='neither', ax=ax)
+        #imm = dx.plot(x='lon', y='lat',transform=ccrs.PlateCarree(), vmin=-1E-5, vmax=1E-5, cmap='RdBu_r', add_colorbar=False, extend='neither', ax=ax)
+        imm = dx.plot(x='lon', y='lat',transform=ccrs.PlateCarree(), vmin=-1E-1, vmax=1E-1, cmap='RdBu_r', add_colorbar=False, extend='neither', ax=ax)
 
 
     if plot_choice=='zval':

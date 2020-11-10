@@ -92,8 +92,8 @@ Module mk_trend
         s_array(i) = (x(j)-x(k))/(a(j)-a(k))
       ENDDO
     ENDDO
-    !Sn = median(s_array)
-    Sn=1.0
+    Sn = median(s_array)
+    !Sn=1.0 ! test I guess ?
     DEALLOCATE(a)
     DEALLOCATE(x)
     DEALLOCATE(unique_x)
