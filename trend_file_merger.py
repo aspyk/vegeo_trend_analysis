@@ -11,11 +11,10 @@ from netCDF4 import Dataset
 import re
 import h5py
 import cartopy.crs as ccrs
-from mpl_toolkits.basemap import Basemap
 import matplotlib.pyplot as plt
 import xarray as xr
 import matplotlib as mpl
-import os
+import os,sys
 
 def merge_trends(input_path, file_trend_name, xlim1, xlim2, ylim1, ylim2, nmaster):
 
@@ -39,16 +38,18 @@ def merge_trends(input_path, file_trend_name, xlim1, xlim2, ylim1, ylim2, nmaste
     tile_map = np.zeros((3712,3712))
 
     
-    row_chunk_main = np.arange(xlim1,xlim2,nmaster)
-    col_chunk_main = np.arange(ylim1,ylim2,nmaster)
+    row_chunk_main = np.arange(xlim1, xlim2, nmaster)
+    col_chunk_main = np.arange(ylim1, ylim2, nmaster)
     '''we can use 1000 or less file size 500, but need to change the dependencies in code as described by the comments '''
     chunks_row_final = np.append(row_chunk_main, [xlim2], axis=0)
     chunks_col_final = np.append(col_chunk_main, [ylim2], axis=0)    
 
     nchild = 100
-    chunks_main = np.arange(chunks_row_final[0],chunks_row_final[-1],nchild)
-    chunks_final = np.append(chunks_main,[xlim2],axis=0)
+    chunks_main = np.arange(chunks_row_final[0], chunks_row_final[-1], nchild)
+    chunks_final = np.append(chunks_main, [xlim2], axis=0)
        
+    print(chunks_final)
+    #sys.exit()
         
     fp = open(input_path+'/'+'filelist.txt')
     
@@ -135,17 +136,10 @@ def plot_trends(input_path, output_path, file_trend_name, xlim1, xlim2, ylim1, y
     work_dir_msg = './input_ancillary/'
     # Reading lat from MSG disk
     latmsg = h5py.File(work_dir_msg+'HDF5_LSASAF_MSG_LAT_MSG-Disk_4bytesPrecision','r')
-    lat_MSG = latmsg['LAT'][:]
-    lat_MSG = np.array(lat_MSG,dtype='float')
-    lat_MSG[lat_MSG==910000] = np.nan
-    lat_MSG = lat_MSG*0.0001  
+    lat_MSG = 0.0001*latmsg['LAT'][:]
 
     lonmsg = h5py.File(work_dir_msg+'HDF5_LSASAF_MSG_LON_MSG-Disk_4bytesPrecision','r')
-    lon_MSG = lonmsg['LON'][:]
-    lon_MSG = np.array(lon_MSG,dtype='float')
-    lon_MSG[lon_MSG==910000] = np.nan    
-    lon_MSG = lon_MSG*0.0001
-    
+    lon_MSG = 0.0001*lonmsg['LON'][:]
     
     hangle_view_zen = h5py.File(work_dir_msg+'GEO_L1B-ANGLES-MSG2_2012-06-15T13-00-00_V1-00.hdf5','r')
     view_zenith = hangle_view_zen['View_Zenith'][:]
@@ -153,10 +147,6 @@ def plot_trends(input_path, output_path, file_trend_name, xlim1, xlim2, ylim1, y
     view_zenith[view_zenith==65535] = np.NaN
     view_zenith = view_zenith*0.01
     
-    lon_MSG[np.isnan(lon_MSG)] = 91
-    lat_MSG[np.isnan(lat_MSG)] = 91
-
- 
     trends['sn'][trends['sn']==999] = np.NaN
     trends['sn'][trends['pval']>0.05] = np.NaN
 
@@ -164,11 +154,11 @@ def plot_trends(input_path, output_path, file_trend_name, xlim1, xlim2, ylim1, y
     trends['zval'][trends['pval']>0.05] = np.NaN
 
     
-    proj = ccrs.Geostationary(central_longitude=0.0, satellite_height=35785831, globe=None)
+    proj = ccrs.Geostationary()
+    #proj = ccrs.Geostationary(central_longitude=0.0, satellite_height=35785831, globe=None)
     #fig, ax = plt.subplots(figsize=(12, 12), subplot_kw={'projection':proj})
     fig, ax = plt.subplots(subplot_kw={'projection':proj})
 
-    zone_str = '_'.join([str(i) for i in [xlim1,xlim2,ylim1,ylim2]])
 
     if plot_choice=='sn':
         trends[plot_choice][view_zenith>75] = np.NaN
@@ -176,30 +166,24 @@ def plot_trends(input_path, output_path, file_trend_name, xlim1, xlim2, ylim1, y
         '''The value of scale tendency depends on the product, daily or high frequency, for daily, the value is 365 '''
     else:
         dx = xr.DataArray(trends[plot_choice][xlim1:xlim2,ylim1:ylim2], dims = ('y','x'))
-    plot_save = plot_choice+'_'+zone_str+'.png'
     
     dx.coords['lat'] = (('y', 'x'), lat_MSG[xlim1:xlim2,ylim1:ylim2])
     dx.coords['lon'] = (('y', 'x'), lon_MSG[xlim1:xlim2,ylim1:ylim2])
 
     if plot_choice=='sn':
-        #imm = dx.plot(x='lon', y='lat',transform=ccrs.PlateCarree(), subplot_kws={'projection': proj}, vmin=-1E-5, vmax=1E-5, cmap='RdBu_r', add_colorbar=False, extend='neither', ax=ax)
         #imm = dx.plot(x='lon', y='lat',transform=ccrs.PlateCarree(), vmin=-1E-5, vmax=1E-5, cmap='RdBu_r', add_colorbar=False, extend='neither', ax=ax)
         imm = dx.plot(x='lon', y='lat',transform=ccrs.PlateCarree(), vmin=-1E-1, vmax=1E-1, cmap='RdBu_r', add_colorbar=False, extend='neither', ax=ax)
 
 
     if plot_choice=='zval':
-        #imm = dx.plot(x='lon', y='lat', transform=ccrs.PlateCarree(), subplot_kws={'projection': proj}, vmin=-10, vmax=10, cmap='RdBu_r', add_colorbar=False, extend='neither', ax=ax)
         imm = dx.plot(x='lon', y='lat', transform=ccrs.PlateCarree(), vmin=-10, vmax=10, cmap='RdBu_r', add_colorbar=False, extend='neither', ax=ax)
         #imm = dx.plot(x='lon', y='lat', transform=ccrs.PlateCarree(), cmap='RdBu_r', add_colorbar=False, extend='neither', ax=ax)
 
     if plot_choice=='pval':
-        #imm = dx.plot(x='lon', y='lat', transform=ccrs.PlateCarree(), subplot_kws={'projection': proj}, vmin=-10, vmax=10, cmap='RdBu_r', add_colorbar=False, extend='neither', ax=ax)
-        #imm = dx.plot(x='lon', y='lat', transform=ccrs.PlateCarree(), vmin=-10, vmax=10, cmap='RdBu_r', add_colorbar=False, extend='neither', ax=ax)
-        imm = dx.plot(x='lon', y='lat', transform=ccrs.PlateCarree(), cmap='RdBu_r', add_colorbar=False, extend='neither', ax=ax)
+        imm = dx.plot(x='lon', y='lat', transform=ccrs.PlateCarree(), vmin=0., vmax=1., cmap='RdBu_r', add_colorbar=False, extend='neither', ax=ax)
+        #imm = dx.plot(x='lon', y='lat', transform=ccrs.PlateCarree(), cmap='RdBu_r', add_colorbar=False, extend='neither', ax=ax)
 
     if plot_choice=='len':
-        #imm = dx.plot(x='lon', y='lat', transform=ccrs.PlateCarree(), subplot_kws={'projection': proj}, vmin=-10, vmax=10, cmap='RdBu_r', add_colorbar=False, extend='neither', ax=ax)
-        #imm = dx.plot(x='lon', y='lat', transform=ccrs.PlateCarree(), vmin=-10, vmax=10, cmap='RdBu_r', add_colorbar=False, extend='neither', ax=ax)
         imm = dx.plot(x='lon', y='lat', transform=ccrs.PlateCarree(), cmap='RdBu_r', add_colorbar=False, extend='neither', ax=ax)
 
 
@@ -210,6 +194,8 @@ def plot_trends(input_path, output_path, file_trend_name, xlim1, xlim2, ylim1, y
     plt.axis('off')
     ax.set_title(plot_name, fontsize=20)
     
+    zone_str = '_'.join([str(i) for i in [xlim1,xlim2,ylim1,ylim2]])
+    plot_save = plot_choice+'_'+zone_str+'.png'
     plot_string_save = output_path + '/' + plot_save
     plot_string_save = os.path.normpath(plot_string_save)
     
