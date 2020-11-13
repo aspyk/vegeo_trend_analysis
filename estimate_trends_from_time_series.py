@@ -48,10 +48,13 @@ def parse_args(command=None):
     return args
 
     
-def init_worker_nc(var_dict,X_shape,Y_shape,step_chunk_x,step_chunk_y,final_chunk_x,final_chunk_y,start_chunk_x,start_chunk_y,file_timeseries,file_outpath,iteration_final,indx_filter):
-        '''Initialize the pool with boundaries of data to be read and write'''
-        '''currently, the last version of the code uses only the input time series data '''
-        '''Rest of arguments are not used '''
+def init_worker_nc(var_dict, X_shape, Y_shape, step_chunk_x, step_chunk_y, final_chunk_x, final_chunk_y,
+                   start_chunk_x, start_chunk_y, file_timeseries, file_outpath, iteration_final, indx_filter):
+        '''
+        Initialize the pool with boundaries of data to be read and write
+        currently, the last version of the code uses only the input time series data
+        Rest of arguments are not used
+        '''
         
         # Using a dictionary to initialize all the boundaries of the grid
         var_dict['X_shape'] = X_shape
@@ -68,29 +71,37 @@ def init_worker_nc(var_dict,X_shape,Y_shape,step_chunk_x,step_chunk_y,final_chun
         var_dict['iteration_last_check'] = iteration_final
     
  
-def processInput_trends(tuple_limits1,tuple_limits2,parent_iteration,child_iteration, nchild):
+def processInput_trends(tuple_limits1 ,tuple_limits2, parent_iteration, child_iteration, nchild):
     '''This is the main file that calculate trends '''
 
     process = psutil.Process(os.getpid())
     current = current_process()
     print(current._identity, f'{process.memory_info().rss/1024/1024} Mo')
 
-    '''Reading the input time series file from main chunk, configured length of time series X 500 X 500; it varies if different chunks are used'''
+    # Reading the input time series file from main chunk, configured length of time series X 500 X 500; it varies if different chunks are used
     hdf_ts = Dataset(var_dict['file_input_time_series'], 'r', format='NETCDF4')
     
-    '''the tuple limits are between 0 and 3700 for LSA SAF products. if it reaches the limit, it is used for 12 additional pixels to complete size 3712'''
-    '''tuple_limits2 and tuple_limits1 correspond to first indices of the bounding box in the iteration'''
-    '''currently nchild or child chunks are set to 100 X 100 only, irrespective of master size; eg., 500 X 500 box contain 25 100 X 100 child chunks '''
-    if tuple_limits2==3700: 
-        step_chunk2 = 12
-    else: 
-        step_chunk2 = nchild
-  
+    # the tuple limits are between 0 and 3700 for LSA SAF products. if it reaches the limit, it is used for 12 additional pixels to complete size 3712
+    # tuple_limits2 and tuple_limits1 correspond to first indices of the bounding box in the iteration
+    # currently nchild or child chunks are set to 100 X 100 only, irrespective of master size; eg., 500 X 500 box contain 25 100 X 100 child chunks
+    
+    iter_subchunk_x = tuple_limits1 - var_dict['start_chunk_x']
+    iter_subchunk_y = tuple_limits2 - var_dict['start_chunk_y']
+
     if tuple_limits1==3700:
         step_chunk1 = 12
+    elif iter_subchunk_x+nchild > hdf_ts.variables['time_series_chunk'].shape[1]:
+        step_chunk1 = hdf_ts.variables['time_series_chunk'].shape[1] - iter_subchunk_x
     else:
         step_chunk1 = nchild
 
+    if tuple_limits2==3700: 
+        step_chunk2 = 12
+    elif iter_subchunk_y+nchild > hdf_ts.variables['time_series_chunk'].shape[2]:
+        step_chunk2 = hdf_ts.variables['time_series_chunk'].shape[2] - iter_subchunk_y
+    else: 
+        step_chunk2 = nchild
+  
 
     # Create temporary storage with size of sub chunks in main chunk, currently configured 100 by 100 blocks
     var_temp_output = np.empty([step_chunk1,step_chunk2,4])    
@@ -100,8 +111,6 @@ def processInput_trends(tuple_limits1,tuple_limits2,parent_iteration,child_itera
     
     print('Blocks #### Row :',tuple_limits1,'TO :',tuple_limits1+step_chunk1,'#### Column :',tuple_limits2,'TO :',tuple_limits2+step_chunk2)
 
-    iter_subchunk_x = tuple_limits1 - var_dict['start_chunk_x']
-    iter_subchunk_y = tuple_limits2 - var_dict['start_chunk_y']
     
 
     print("hdf_ts.variables['time_series_chunk'].shape:", hdf_ts.variables['time_series_chunk'].shape)
@@ -109,20 +118,20 @@ def processInput_trends(tuple_limits1,tuple_limits2,parent_iteration,child_itera
     print('iter_subchunk_y:',iter_subchunk_y, 'step_chunk2:', step_chunk2)
 
     # Reduce loop indices to fit the shape of data shape is no nchild multiple
-    if iter_subchunk_x+step_chunk1>hdf_ts.variables['time_series_chunk'].shape[1]:
-       bnd_end_x = hdf_ts.variables['time_series_chunk'].shape[1]
-    else:
-       bnd_end_x = iter_subchunk_x+step_chunk1
-    
-    if iter_subchunk_y+step_chunk2>hdf_ts.variables['time_series_chunk'].shape[2]:
-       bnd_end_y = hdf_ts.variables['time_series_chunk'].shape[2]
-    else:
-       bnd_end_y = iter_subchunk_y+step_chunk2
+    #if iter_subchunk_x+step_chunk1>hdf_ts.variables['time_series_chunk'].shape[1]:
+    #   bnd_end_x = hdf_ts.variables['time_series_chunk'].shape[1]
+    #else:
+    #   bnd_end_x = iter_subchunk_x+step_chunk1
+    #
+    #if iter_subchunk_y+step_chunk2>hdf_ts.variables['time_series_chunk'].shape[2]:
+    #   bnd_end_y = hdf_ts.variables['time_series_chunk'].shape[2]
+    #else:
+    #   bnd_end_y = iter_subchunk_y+step_chunk2
 
-    # sub_chunks_x = np.arange(iter_subchunk_x, iter_subchunk_x+step_chunk1, 1)
-    # sub_chunks_y = np.arange(iter_subchunk_y, iter_subchunk_y+step_chunk2, 1)
-    sub_chunks_x = np.arange(iter_subchunk_x, bnd_end_x, 1)
-    sub_chunks_y = np.arange(iter_subchunk_y, bnd_end_y, 1)
+    sub_chunks_x = np.arange(iter_subchunk_x, iter_subchunk_x+step_chunk1, 1)
+    sub_chunks_y = np.arange(iter_subchunk_y, iter_subchunk_y+step_chunk2, 1)
+    #sub_chunks_x = np.arange(iter_subchunk_x, bnd_end_x, 1)
+    #sub_chunks_y = np.arange(iter_subchunk_y, bnd_end_y, 1)
 
 
     b_deb = 0 # flag to print time profiling
@@ -187,6 +196,7 @@ def processInput_trends(tuple_limits1,tuple_limits2,parent_iteration,child_itera
             if 1:
                 ## orinal mann-kendall test :
                 p,z,Sn,nx = m.mk_trend(len(data_test), np.arange(len(data_test)), data_test)
+                # if data_test = [], the test return (p,z,Sn,nx) = (1.0, 0.0, 0.5, 0.0)
             else:
                 ## other test
                 p,z,Sn,nx = [0,0,0,0] 
@@ -355,7 +365,7 @@ def main():
     
            ''' Applying the multiple processing here, with process of choice, i use 4 for local and 16 for lustre '''
            ''' Here we pass the arguments to the initializer for pool so we use in the function used in multiple processing, it can be changed differently '''
-           nproc = 4
+           nproc = 1
            with Pool(processes=nproc, initializer=init_worker_nc, initargs=(var_dict,X_shape,Y_shape,step_chunk_x,step_chunk_y,final_chunk_x,final_chunk_y,start_chunk_x,start_chunk_y,in_file,outpath_final,iteration_final,indx_seasons[0])) as pool:
                '''I am not returning results, usually you can return and write the results after multiprocessing '''
                print('pool started')
