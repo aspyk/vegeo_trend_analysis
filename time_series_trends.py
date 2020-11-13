@@ -24,15 +24,9 @@ dimensions of 4 regions of MSG-Disk
 from datetime import datetime
 import pandas as pd
 import numpy as np
-from scipy import stats
-from scipy.stats import mstats
 import h5py
-import mankendall_fortran_repeat_exp2 as m
-from multiprocessing import Pool, cpu_count, RawArray, Lock
-import itertools
 from netCDF4 import Dataset
 import sys
-#from kendall_esacci import mk_test
 from os import getpid
 import re
 import glob
@@ -51,7 +45,7 @@ def time_series_albedo(start_year,end_year,start_month,end_month,output_path,pro
 
     start = datetime(start_year,start_month,1,0,0,0)
     end = datetime(end_year,end_month,1,0,0,0)
-    series=pd.bdate_range(start, end, freq='D')
+    series = pd.bdate_range(start, end, freq='D')
    
     root_dssf='/cnrm/vegeo/SAT/DATA/AERUS_GEO/Albedo_v104'
     file_paths_root=[root_dssf+'/'+str('{:04}'.format(d.year))+'/' for d in series]
@@ -288,16 +282,15 @@ def time_series_lai(start_year,end_year,start_month,end_month,output_path,produc
                        
                        
                        pandas_series_lai[dayindex[0][0],:] = LAI
-    #                   cnt+=1
+                       #cnt+=1
                    else:
                         
                         pass
             
                except:
                     print("error")
-    #                print('File not found moving to next file, assigning NaN to extacted pixel')
-    #                cnt+=1                    
-            
+                    #print('File not found moving to next file, assigning NaN to extacted pixel')
+                    #cnt+=1                    
                     pass		
     
            '''Write time series of the data for each master iteration '''

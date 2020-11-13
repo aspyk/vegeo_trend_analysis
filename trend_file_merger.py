@@ -10,11 +10,18 @@ import numpy as np
 from netCDF4 import Dataset
 import re
 import h5py
-import cartopy.crs as ccrs
 import matplotlib.pyplot as plt
-import xarray as xr
-import matplotlib as mpl
 import os,sys
+
+def pprinttable(rows, header, fmt):
+    w = 9
+    h_format = "{:>%i}"%w * (len(header))
+    row_format = ''
+    for f in fmt:
+        row_format += '{:>%i%s}'%(w,f)
+    print(h_format.format(*header))
+    for row in rows:
+        print(row_format.format(*row))
 
 def merge_trends(input_path, file_trend_name, xlim1, xlim2, ylim1, ylim2, nmaster):
 
@@ -26,6 +33,8 @@ def merge_trends(input_path, file_trend_name, xlim1, xlim2, ylim1, ylim2, nmaste
     ydim = nc_output.createDimension('Y_dim',3712)
     Vardim = nc_output.createDimension('Var',4)
     
+    print('load0')
+
     output_data = nc_output.createVariable('chunk_scores_p_val',np.float,('X_dim','Y_dim'),zlib=True,least_significant_digit=3)
     output_data = nc_output.createVariable('chunk_scores_z_val',np.float,('X_dim','Y_dim'),zlib=True,least_significant_digit=3)
     output_data = nc_output.createVariable('chunk_scores_Sn_val',np.float,('X_dim','Y_dim'),zlib=True,least_significant_digit=9)
@@ -34,8 +43,10 @@ def merge_trends(input_path, file_trend_name, xlim1, xlim2, ylim1, ylim2, nmaste
     temp_store_trend = np.empty([3712,3712,4])
     temp_store_trend[:] = np.NaN
     
+    print('load1')
 
-    tile_map = np.zeros((3712,3712))
+    tile_map_glob = np.full((3712,3712), np.nan)
+    tile_map_loc = np.full((xlim2-xlim1,ylim2-ylim1), np.nan)
 
     
     row_chunk_main = np.arange(xlim1, xlim2, nmaster)
@@ -48,14 +59,13 @@ def merge_trends(input_path, file_trend_name, xlim1, xlim2, ylim1, ylim2, nmaste
     chunks_main = np.arange(chunks_row_final[0], chunks_row_final[-1], nchild)
     chunks_final = np.append(chunks_main, [xlim2], axis=0)
        
-    print(chunks_final)
-    #sys.exit()
-        
+    print('load2')
+    
     fp = open(input_path+'/'+'filelist.txt')
     
     filenames = fp.readlines()
     for i in range(len(chunks_final)-1):
-        print (chunks_final[i], chunks_final[i+1])
+        print ('**row', chunks_final[i], 'to', chunks_final[i+1])
             
         matching_master = [s for s in filenames if 'ROW_'+np.str(chunks_final[i])+'_'+ np.str(chunks_final[i+1]) in s]
         
@@ -92,17 +102,28 @@ def merge_trends(input_path, file_trend_name, xlim1, xlim2, ylim1, ylim2, nmaste
 
             ## Fill a tile map to debug
             tmp = 0.5*np.ones((ROW2-ROW1,COL2-COL1))
-            tmp[:,:] = data_child_z
-            tmp = np.where(tmp==0.0, 0, 0.5) # create a mask for valid data (~land)
+            tmp[:,:] = data_child_length
+            tmp = np.where(tmp==0.0, 0.0, 0.5) # create a mask for valid data (~land)
             tmp[:,[0,-1]] = 1.0 # add border of the tile
             tmp[[0,-1],:] = 1.0 # idem
-            tile_map[ROW1:ROW2,COL1:COL2] = tmp
+            tile_map_glob[ROW1:ROW2,COL1:COL2] = tmp
+            tile_map_loc[ROW1-xlim1:ROW2-xlim1,COL1-ylim1:COL2-ylim1] = tmp
 
         # DEBUG
-        v = temp_store_trend
-        arr_name = ['pval', 'zval', 'sn', 'len']
-        for ii,namei in zip(range(4), arr_name):
-            print(f'{namei} NaN/Min/Max:', f'{100*np.isnan(v[:,:,ii]).sum()/v[:,:,ii].size:.1f}%', np.nanmin(v[:,:,ii]), np.nanmax(v[:,:,ii]))
+        var = temp_store_trend[xlim1:xlim2,ylim1:ylim2,:]
+        size = var.shape[0]*var.shape[1]
+        header = ['var', 'valid[%]', 'min', 'max']
+        fmt = ['s','.1f','.3f','.3f']
+        rows = []
+        v = var[:,:,3] 
+        rows.append(['len', 100.*(1.-np.count_nonzero(v==0.0)/size), np.nanmin(v), np.nanmax(v)])
+        v = var[:,:,0] 
+        rows.append(['pval', 100.*(1-np.count_nonzero(v>0.05)/size), np.nanmin(v), np.nanmax(v)])
+        v = var[:,:,1] 
+        rows.append(['zval', 100.*(1-np.count_nonzero(v==0.0)/size), np.nanmin(v), np.nanmax(v)])
+        v = var[:,:,2] 
+        rows.append(['sn', 100.*(1-np.count_nonzero(v==0.5)/size), np.nanmin(v), np.nanmax(v)])
+        pprinttable(rows, header, fmt)
 
     nc_output.variables['chunk_scores_p_val'][:] = temp_store_trend[:,:,0]
     nc_output.variables['chunk_scores_z_val'][:] = temp_store_trend[:,:,1]
@@ -112,17 +133,23 @@ def merge_trends(input_path, file_trend_name, xlim1, xlim2, ylim1, ylim2, nmaste
     nc_output.close() 
 
     print('Plot debug tile map...')
-    plt.imshow(tile_map)
-    plt.savefig('tile_map.png')
+    plt.imshow(tile_map_glob)
+    plt.savefig('tile_map_glob.png')
+    plt.imshow(tile_map_loc)
+    plt.savefig('tile_map_loc.png')
     
 
 def plot_trends(input_path, output_path, file_trend_name, xlim1, xlim2, ylim1, ylim2,
                 plot_name, plot_choice, scale_tendency):
     
+    import cartopy.crs as ccrs
+    import xarray as xr
+    
     cdpzn = input_path
 
     print('*** PLOT TRENDS')
     
+    ## Read merged data
     nc_output = Dataset(cdpzn+'/'+file_trend_name,'r')
 
     trends = {}
@@ -132,9 +159,9 @@ def plot_trends(input_path, output_path, file_trend_name, xlim1, xlim2, ylim1, y
     trends['sn'] = nc_output.variables['chunk_scores_Sn_val'][:]
     nc_output.close()
     
-        
+    ## Read MSG geographical data
     work_dir_msg = './input_ancillary/'
-    # Reading lat from MSG disk
+
     latmsg = h5py.File(work_dir_msg+'HDF5_LSASAF_MSG_LAT_MSG-Disk_4bytesPrecision','r')
     lat_MSG = 0.0001*latmsg['LAT'][:]
 
@@ -153,9 +180,8 @@ def plot_trends(input_path, output_path, file_trend_name, xlim1, xlim2, ylim1, y
     trends['zval'][trends['zval']==999] = np.NaN
     trends['zval'][trends['pval']>0.05] = np.NaN
 
-    
+    ## Plot 
     proj = ccrs.Geostationary()
-    #proj = ccrs.Geostationary(central_longitude=0.0, satellite_height=35785831, globe=None)
     #fig, ax = plt.subplots(figsize=(12, 12), subplot_kw={'projection':proj})
     fig, ax = plt.subplots(subplot_kw={'projection':proj})
 
@@ -170,21 +196,25 @@ def plot_trends(input_path, output_path, file_trend_name, xlim1, xlim2, ylim1, y
     dx.coords['lat'] = (('y', 'x'), lat_MSG[xlim1:xlim2,ylim1:ylim2])
     dx.coords['lon'] = (('y', 'x'), lon_MSG[xlim1:xlim2,ylim1:ylim2])
 
+    cm = 'jet'
+    #cm = 'nipy_spectral'
+    #cm = 'RdBu_r'
+
     if plot_choice=='sn':
         #imm = dx.plot(x='lon', y='lat',transform=ccrs.PlateCarree(), vmin=-1E-5, vmax=1E-5, cmap='RdBu_r', add_colorbar=False, extend='neither', ax=ax)
-        imm = dx.plot(x='lon', y='lat',transform=ccrs.PlateCarree(), vmin=-1E-1, vmax=1E-1, cmap='RdBu_r', add_colorbar=False, extend='neither', ax=ax)
+        imm = dx.plot(x='lon', y='lat',transform=ccrs.PlateCarree(), vmin=-1E-1, vmax=1E-1, cmap=cm, add_colorbar=False, extend='neither', ax=ax)
 
 
     if plot_choice=='zval':
-        imm = dx.plot(x='lon', y='lat', transform=ccrs.PlateCarree(), vmin=-10, vmax=10, cmap='RdBu_r', add_colorbar=False, extend='neither', ax=ax)
+        imm = dx.plot(x='lon', y='lat', transform=ccrs.PlateCarree(), vmin=-10, vmax=10, cmap=cm, add_colorbar=False, extend='neither', ax=ax)
         #imm = dx.plot(x='lon', y='lat', transform=ccrs.PlateCarree(), cmap='RdBu_r', add_colorbar=False, extend='neither', ax=ax)
 
     if plot_choice=='pval':
-        imm = dx.plot(x='lon', y='lat', transform=ccrs.PlateCarree(), vmin=0., vmax=1., cmap='RdBu_r', add_colorbar=False, extend='neither', ax=ax)
+        imm = dx.plot(x='lon', y='lat', transform=ccrs.PlateCarree(), vmin=0., vmax=1., cmap=cm, add_colorbar=False, extend='neither', ax=ax)
         #imm = dx.plot(x='lon', y='lat', transform=ccrs.PlateCarree(), cmap='RdBu_r', add_colorbar=False, extend='neither', ax=ax)
 
     if plot_choice=='len':
-        imm = dx.plot(x='lon', y='lat', transform=ccrs.PlateCarree(), cmap='RdBu_r', add_colorbar=False, extend='neither', ax=ax)
+        imm = dx.plot(x='lon', y='lat', transform=ccrs.PlateCarree(), cmap=cm, add_colorbar=False, extend='neither', ax=ax)
 
 
     cbar = plt.colorbar(imm,ax=ax,orientation='horizontal',shrink=.8,pad=0.05,aspect=10)

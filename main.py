@@ -6,10 +6,14 @@ import argparse
 import datetime
 import os,sys
 import pathlib
+import hashlib
 
 
 
 def parse_args():
+    
+    global zone_names
+
     parser = argparse.ArgumentParser(description='The parameters are being given as arguments for input time series,', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('-t0','--start_date',
                         help='start date (ISO format %%Y-%%m-%%d) for reading of time series.',
@@ -21,8 +25,8 @@ def parse_args():
                         required=True)    
     parser.add_argument('-o','--output', help='output path')    
     parser.add_argument('-p','--product_tag',
-                        help='product tag or product dataset, either albedo, lai, evapo, dssf, fapar ',
-                        choices=['albedo', 'lai', 'evapo', 'dssf', 'fapar'],
+                        help='product tag or product dataset',
+                        choices=['albedo', 'lai', 'evapo', 'dssf', 'fapar', 'lst'],
                         nargs='+',
                         required=True)    
     groupz = parser.add_mutually_exclusive_group(required=True)
@@ -31,8 +35,8 @@ def parse_args():
                         nargs='+',
                         type=int) 
     groupz.add_argument('-zn','--zone_name',
-                        help='Zone to be analysed. Given as a name, either Euro, NAfr, SAfr, SAme.',
-                        choices=['Euro', 'NAfr', 'SAfr', 'SAme'])
+                        help='Zone to be analysed. Given as a name in {0}.'.format(', '.join(zone_names)),
+                        choices=zone_names)
     parser.add_argument('-a','--action',
                         help='Action to run between extract, group, trend, plot',
                         choices=['extract', 'append', 'trend', 'merge', 'plot'],
@@ -48,6 +52,8 @@ def parse_args():
 
 
 def main():
+
+    global zone_names
 
     # Add some text coloring
     CR  = '\33[31m' # red
@@ -81,13 +87,13 @@ def main():
     start_month = int(args.start_date.month)
     end_month = int(args.end_date.month)
     
-    zone_names = ['Euro', 'NAfr', 'SAfr', 'SAme']
     dic_zone = {}
     # x1,x2,y1,y2, origin at the top left
-    dic_zone['Euro'] = np.array([1550, 3250, 50, 700])
-    dic_zone['NAfr'] = np.array([1240, 3450, 700, 1850])
+    dic_zone['Euro'] = np.array([1550, 3250,   50,  700])
+    dic_zone['NAfr'] = np.array([1240, 3450,  700, 1850])
     dic_zone['SAfr'] = np.array([2140, 3350, 1850, 3040])
-    dic_zone['SAme'] = np.array([40, 740, 1460, 2970])
+    dic_zone['SAme'] = np.array([  40,  740, 1460, 2970])
+    dic_zone['Fra']  = np.array([1740, 2060,  310,  510])
     
     if args.zone_name is not None:
         args.zone_coor = dic_zone[args.zone_name]
@@ -110,6 +116,14 @@ def main():
                                                          green(args.start_date.isoformat()),
                                                          green(args.end_date.isoformat()), 
                                                          green(','.join(args.action))) )
+
+    str_hash = '{0},{1},{2}'.format(args.start_date.isoformat(), args.end_date.isoformat(), ','.join([str(i) for i in [xlim1,xlim2,ylim1,ylim2]]))
+    print(str_hash)
+    hex_hash = hashlib.sha1(str_hash.encode("UTF-8")).hexdigest()
+    print(hex_hash[:6])
+    print(hex_hash[:8])
+    print(hex_hash[:10])
+
 
     ## Run the selected pipeline actions
    
@@ -202,5 +216,7 @@ def main():
 
 
 if __name__ == "__main__":
-   main()
+    global zone_names
+    zone_names = ['Euro', 'NAfr', 'SAfr', 'SAme', 'Fra']
+    main()
 
