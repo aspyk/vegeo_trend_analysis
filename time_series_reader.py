@@ -30,11 +30,50 @@ import sys
 from os import getpid
 import re
 import glob
-''' Prepare your files to read time series''' 
+import traceback
+from timeit import default_timer as timer
+
 
 def grouper(input_list, n = 2):
+    """
+    Generate tuple of n consecutive items from input_list
+    ex for n=2: [a,b,c,d] -> [[a,b],[b,c],[c,d]]
+    """
     for i in range(len(input_list) - (n - 1)):
         yield input_list[i:i+n]
+
+
+def plot2Darray(v, var='var'):
+    """Debug function to plot a 2D array in terminal"""
+    import matplotlib.pyplot as plt
+
+    plt.imshow(v)
+    imgname = 'h52img_{0}.png'.format(var)
+    plt.savefig(imgname)
+    print(f'Saved to {imgname}.')
+    os.system('/mnt/lfs/d30/vegeo/fransenr/CODES/tools/TerminalImageViewer/src/main/cpp/tiv ' + imgname)
+
+
+def extract_valid_albedo(file_name,row0,row1,col0,col1):
+    """Shortcut function to extract valid albedo data"""
+    ## Extract data zone
+    try:
+        fh5 = h5py.File(file_name,'r')
+    except Exception:
+        traceback.print_exc()
+        print ('File not found, moving to next file, assigning NaN to extacted pixel.')
+        return None
+
+    albedo = fh5['AL-BB-DH'][row0:row1,col0:col1] # array of int
+    zage = fh5['Z_Age'][row0:row1,col0:col1]
+    fh5.close()
+    
+    ## remove invalid data
+    albedo = np.where(albedo==-1, np.nan, albedo/10000.)            
+    albedo = np.where(zage>0, np.nan, albedo)
+    
+    return albedo
+
 
 def time_series_albedo(start, end, output_path, product_tag, xlim1,xlim2,ylim1,ylim2, nmaster):
     """
@@ -48,24 +87,28 @@ def time_series_albedo(start, end, output_path, product_tag, xlim1,xlim2,ylim1,y
 
     ## Get the MSG disk land mask (0: see, 1: land, 2: outside space, 3: river/lake)
     hlw = h5py.File('./input_ancillary/HDF5_LSASAF_USGS-IGBP_LWMASK_MSG-Disk_201610171300','r')
-    lwmsk = hlw['LWMASK'][:]
+    lwmsk = hlw['LWMASK'][xlim1:xlim2,ylim1:ylim2]
+    hlw.close()
 
-   
+    # ICARE: 2005-01-01 -> 2016-09-18 (~2005-2016)
     root_dssf = '/cnrm/vegeo/SAT/DATA/AERUS_GEO/Albedo_v104'
     file_paths_root = [root_dssf+'/'+str('{:04}'.format(d.year))+'/' for d in series]
     file_pattern = 'SEV_AERUS-ALBEDO-D3_{}_V1-04.h5'
     file_paths_one = [file_pattern.format(d.strftime('%Y-%m-%d')) for d in series]     
     file_paths_final_icare = [file_paths_root[f]+file_paths_one[f] for f in range(len(file_paths_one))]
     
+    # MDAL: 2004-01-19 -> 2015-12-31 (~2004-2015)
     root_dssf = '/cnrm/vegeo/SAT/DATA/MSG/Reprocessed-on-2017/MDAL'
     file_paths_root = [root_dssf+'/'+str('{:04}'.format(d.year))+'/'+str('{:02}'.format(d.month))+'/'+str('{:02}'.format(d.day))+'/' for d in series]
     file_pattern = 'HDF5_LSASAF_MSG_ALBEDO_MSG-Disk_{}0000'
     file_paths_one = [file_pattern.format(d.strftime('%Y%m%d')) for d in series]     
     file_paths_final_mdal = [file_paths_root[f]+file_paths_one[f] for f in range(len(file_paths_one))]
-    
+   
+    # MDAL_NRT: 2015-11-11 -> today (~2016-today)
     root_dssf = '/cnrm/vegeo/SAT/DATA/MSG/NRT-Operational/AL2'
     file_paths_root_one = root_dssf+'/'+'AL2-{}/'
-    file_pattern = 'HDF5_LSASAF_MSG_ALBEDO_MSG-Disk_{}0000.h5'
+    #file_pattern = 'HDF5_LSASAF_MSG_ALBEDO_MSG-Disk_{}0000.h5' # 2015 -> 2018
+    file_pattern = 'HDF5_LSASAF_MSG_ALBEDO_MSG-Disk_{}0000' # 2019 -> 2020
     file_paths_one = [file_paths_root_one.format(d.strftime('%Y%m%d')) for d in series]     
     file_paths_two = [file_pattern.format(d.strftime('%Y%m%d')) for d in series]     
     file_paths_final_mdal_nrt = [file_paths_one[f]+file_paths_two[f] for f in range(len(file_paths_one))]
@@ -77,140 +120,77 @@ def time_series_albedo(start, end, output_path, product_tag, xlim1,xlim2,ylim1,y
    
     ## grouper() generate pair of (item[n], item[n+1])
     for row0,row1 in grouper(chunks_row_final):
-    #for iter_row in range(len(chunks_row_final)-1):
-       for col0,col1 in grouper(chunks_col_final):
-       #for iter_col in range(len(chunks_col_final)-1):
-           print("chunk row {}:{} - col {}:{}".format(row0, row1, col0, col1))
-           print(row0, row1, col0, col1, '***Row_SIZE***', row1-row0, '***Col_SIZE***', col1-col0) 
-           continue
+        for col0,col1 in grouper(chunks_col_final):
+            t0 = timer()
+            print('***', 'Row/Col_SIZE=({},{})'.format(row1-row0, col1-col0), 'GLOBAL_LOC=[{}:{},{}:{}]'.format(row0, row1, col0, col1)) 
            
-           pandas_series_albedo = np.empty([len(file_paths_final_icare), row1-row0, col1-col0])
-           pandas_series_albedo[:] = np.NaN
-           cnt = 0             
-           for f in range(len(file_paths_final_icare)):
-    
-               file_iter = file_paths_final_icare[f]
-               dayinformation = re.findall(r"[-+]?\d*\.\d+|\d+", file_iter)
-    
-               year  = int(dayinformation[3])
-               month = int(dayinformation[4])
-               day   = int(dayinformation[5])
-    
-               dayindex = np.where(np.logical_and(series.day==day,series.month==month) & np.logical_and(series.year==year,series.month==month))
-               
-               '''Read time series of the data '''
-               try:
-                   
-                   '''Reading ICARE albedo ''' 
-    
-                   if series[f].year>=2017:
-                       print ("ICARE albedo not found for Ocean, Using NRT data; year > 2016")
-                   elif series[f].year>=2005 and series[f].year<2017 :     
-                       file_icare=file_paths_final_icare[f]
-                       fid_icare=h5py.File(file_icare,'r')
-                       print (file_icare, iter_row, iter_col)
-                                     
-    
-                       albedo_icare=np.array(fid_icare['ALBEDO']['AL-BB-DH'][chunks_row_final[iter_row]:chunks_row_final[iter_row+1],chunks_col_final[iter_col]:chunks_col_final[iter_col+1]],dtype='f')
-                       
-                       print (albedo_icare.shape)
-                       xshape,yshape=albedo_icare.shape[0],albedo_icare.shape[1]
-                       albedo_icare=np.reshape(albedo_icare,[xshape*yshape])
-                           
-                       albedo_icare[albedo_icare==-1]=np.NaN
-                       
-                       albedo_icare=albedo_icare/10000.            
-                       
-                       zage_icare=np.array(fid_icare['ALBEDO']['Z_Age'][chunks_row_final[iter_row]:chunks_row_final[iter_row+1],chunks_col_final[iter_col]:chunks_col_final[iter_col+1]])
-                       
-                       zage_icare=np.reshape(zage_icare,[xshape*yshape])
-                       
-                       fid_icare.close()
-                       
-                       
-                       
-                       invalid_zage=np.where(zage_icare!=0)
-                       if len(invalid_zage[0])>1:
-                           albedo_icare[invalid_zage[0]]=np.NaN
-                       
-                       albedo_icare=np.reshape(albedo_icare,[xshape*yshape])    
-         
-    
-                   '''Reading MDAL albedo ''' 
-                   if series[f].year>=2016:
-                        file_mdal=file_paths_final_mdal_nrt[f]
-                        fid_mdal=h5py.File(file_mdal,'r')
-                        print (file_mdal, iter_row, iter_col)
-                   else:   
-                       file_mdal=file_paths_final_mdal[f]
-                       fid_mdal=h5py.File(file_mdal,'r')
-                       print(file_mdal, iter_row, iter_col)
-    
-                   albedo_mdal=np.array(fid_mdal['AL-BB-DH'][chunks_row_final[iter_row]:chunks_row_final[iter_row+1],chunks_col_final[iter_col]:chunks_col_final[iter_col+1]],dtype='f')
-                   print (albedo_mdal.shape)
-                   xshape,yshape=albedo_mdal.shape[0],albedo_mdal.shape[1]
-                   albedo_mdal=np.reshape(albedo_mdal,[xshape*yshape])
-                       
-                   albedo_mdal[albedo_mdal==-1]=np.NaN
-                   
-                   albedo_mdal=albedo_mdal/10000.            
-                   
-                   zage_mdal=np.array(fid_mdal['Z_Age'][chunks_row_final[iter_row]:chunks_row_final[iter_row+1],chunks_col_final[iter_col]:chunks_col_final[iter_col+1]])
-                   
-                   zage_mdal=np.reshape(zage_mdal,[xshape*yshape])
-                   
-                   fid_mdal.close()
-                   
-                   invalid_zage=np.where(zage_mdal!=0)
-                   if len(invalid_zage[0])>1:
-                       albedo_mdal[invalid_zage[0]]=np.NaN
-    
-                   net_albedo=np.empty([xshape*yshape])
-                   net_albedo[:]=np.NaN
-                   
-                   albedo_mdal=np.reshape(albedo_mdal,[xshape*yshape])    
-    
-                   lwmsk_chunk=lwmsk[chunks_row_final[iter_row]:chunks_row_final[iter_row+1],chunks_col_final[iter_col]:chunks_col_final[iter_col+1]]
-                   lwmsk_chunk=np.reshape(lwmsk_chunk,[xshape*yshape])
-                   find_ocean=np.where(lwmsk_chunk==0)
-                   find_land=np.where(lwmsk_chunk==1)
-                   if series[f].year>=2005 and series[f].year<2017:
-                       if len(find_ocean[0])>1:
-                           net_albedo[find_ocean[0]]=albedo_icare[find_ocean[0]]
-                       if len(find_land[0])>1:
-                           net_albedo[find_land[0]]=albedo_mdal[find_land[0]]
-                   else:
-                       if len(find_ocean[0])>1:
-                           net_albedo[find_ocean[0]]=albedo_mdal[find_ocean[0]]
-                       if len(find_land[0])>1:
-                           net_albedo[find_land[0]]=albedo_mdal[find_land[0]]
-                     
-                   
-                   net_albedo=np.reshape(net_albedo,[xshape,yshape])
-     
-                   
-                   pandas_series_albedo[dayindex[0],:]=net_albedo
-                   cnt+=1
-            
-               except:
-                    print ('File not found moving to next file, assigning NaN to extacted pixel')
-                    cnt+=1                    
-            
-                    pass		
-    
-           '''Write time series of the data for each master iteration '''
-           write_file=output_path+product_tag+'/store_time_series_'+np.str(chunks_row_final[iter_row])+'_'+np.str(chunks_row_final[iter_row+1])+'_'+np.str(chunks_col_final[iter_col])+'_'+np.str(chunks_col_final[iter_col+1])+'_.nc'
+            ## Initialize an array series with nan
+            series_albedo = np.full([len(file_paths_final_icare), row1-row0, col1-col0], np.nan)
 
+            ## Create the chunk mask
+            lwmsk_chunk = lwmsk[row0-xlim1:row1-xlim1,col0-ylim1:col1-ylim1]
+            ocean = np.where(lwmsk_chunk==0)
+            land = np.where(lwmsk_chunk==1)
+
+            for dateindex,date in enumerate(series):
     
-           nc_iter = Dataset(write_file, 'w', format='NETCDF4')
-           
-           nc_iter.createDimension('x', pandas_series_albedo.shape[0])
-           nc_iter.createDimension('y', pandas_series_albedo.shape[1])
-           nc_iter.createDimension('z', pandas_series_albedo.shape[2])
-           
-           var1 = nc_iter.createVariable('time_series_chunk', np.float, ('x','y','z'),zlib=True)
-           nc_iter.variables['time_series_chunk'][:]=pandas_series_albedo
-               
-           nc_iter.close()
-           del pandas_series_albedo       
-    
+                ## Reading ICARE albedo 
+                if date.year>=2017:
+                    print ("ICARE albedo not available, Using NRT data; year > 2016")
+                elif 2005 <= date.year < 2017:     
+                    file_icare = file_paths_final_icare[dateindex]
+                    print(file_icare)
+                    albedo_icare = extract_valid_albedo(file_icare,ro0,row1,col0,col1)
+                    ## If error in reading, go to the next iteration
+                    if albedo_icare is None:
+                        continue
+                    
+                ## Reading MDAL albedo
+                if date.year>=2016:
+                    file_mdal = file_paths_final_mdal_nrt[dateindex]
+                    if date.year<=2018:
+                        file_mdal += '.h5'
+                else:   
+                    file_mdal = file_paths_final_mdal[dateindex]
+                print(file_mdal)
+                albedo_mdal = extract_valid_albedo(file_mdal,row0,row1,col0,col1)
+                ## If error in reading, go to the next iteration
+                if albedo_mdal is None:
+                    continue
+
+
+                ## Apply mask
+                net_albedo = np.full((row1-row0,col1-col0), np.nan)
+
+                if 2005 <= date.year <= 2016:
+                    if len(ocean[0])>1:
+                        net_albedo[ocean] = albedo_icare[ocean]
+                    if len(land[0])>1:
+                        net_albedo[land] = albedo_mdal[land]
+                else:
+                    if len(ocean[0])>1:
+                        net_albedo[ocean] = albedo_mdal[ocean]
+                    if len(land[0])>1:
+                        net_albedo[land] = albedo_mdal[land]
+                  
+                ## Fill series 
+                series_albedo[dateindex,:] = net_albedo
+             
+            print(timer()-t0)
+ 
+            ## Write time series of the data for each master iteration
+            write_file = output_path+product_tag+'/store_time_series_'+str(row0)+'_'+str(row1)+'_'+str(col0)+'_'+str(col1)+'.nc'
+ 
+            nc_iter = Dataset(write_file, 'w', format='NETCDF4')
+            
+            nc_iter.createDimension('x', series_albedo.shape[0])
+            nc_iter.createDimension('y', series_albedo.shape[1])
+            nc_iter.createDimension('z', series_albedo.shape[2])
+            
+            var1 = nc_iter.createVariable('time_series_chunk', np.float, ('x','y','z'), zlib=True)
+            nc_iter.variables['time_series_chunk'][:] = series_albedo
+                
+            nc_iter.close()
+
+            del series_albedo       
+ 
