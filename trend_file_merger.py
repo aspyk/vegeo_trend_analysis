@@ -222,10 +222,10 @@ def plot_trends(input_path, output_path, file_trend_name, xlim1, xlim2, ylim1, y
 
     ax.coastlines()
     plt.axis('off')
-    ax.set_title(plot_name, fontsize=20)
+    ax.set_title('{} for {}'.format(plot_choice, plot_name.split(':')[1]), fontsize=20)
     
     zone_str = '_'.join([str(i) for i in [xlim1,xlim2,ylim1,ylim2]])
-    plot_save = plot_choice+'_'+zone_str+'.png'
+    plot_save = plot_name.split(':')[0]+'_'+plot_choice+'_'+zone_str+'.png'
     plot_string_save = output_path + '/' + plot_save
     plot_string_save = os.path.normpath(plot_string_save)
     

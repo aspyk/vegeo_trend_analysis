@@ -80,7 +80,7 @@ def processInput_trends(tuple_limits1 ,tuple_limits2, parent_iteration, child_it
 
     # Reading the input time series file from main chunk, configured length of time series X 500 X 500; it varies if different chunks are used
     hdf_ts = Dataset(var_dict['file_input_time_series'], 'r', format='NETCDF4')
-    
+
     # the tuple limits are between 0 and 3700 for LSA SAF products. if it reaches the limit, it is used for 12 additional pixels to complete size 3712
     # tuple_limits2 and tuple_limits1 correspond to first indices of the bounding box in the iteration
     # currently nchild or child chunks are set to 100 X 100 only, irrespective of master size; eg., 500 X 500 box contain 25 100 X 100 child chunks
@@ -145,6 +145,9 @@ def processInput_trends(tuple_limits1 ,tuple_limits2, parent_iteration, child_it
         data_test0 = hdf_ts.variables['time_series_chunk'][:,sub_chunks_x[ii_sub],:]
         #data_test0 = hdf_ts.variables['time_series_chunk'][:500,sub_chunks_x[ii_sub],:]
         #print(f'ii_sub:{ii_sub} ({sub_chunks_x[0]},{sub_chunks_x[-1]})', f'len(sub_chunks_y):{len(sub_chunks_y)} ({sub_chunks_y[0]},{sub_chunks_y[-1]})')
+        # debug
+        #print(np.count_nonzero(np.isnan(data_test0)))
+
         for jj_sub in range(len(sub_chunks_y)):
             if b_deb: print('---------------')
             if b_deb: print(f'{ii_sub} ({sub_chunks_x[0]},{sub_chunks_x[-1]})', f'{jj_sub} ({sub_chunks_y[0]},{sub_chunks_y[-1]})')
@@ -152,6 +155,8 @@ def processInput_trends(tuple_limits1 ,tuple_limits2, parent_iteration, child_it
             t0 = timer()
 
             data_test = data_test0[:,sub_chunks_y[jj_sub]]
+
+
             #data_test=hdf_ts.variables['time_series_chunk'][:,sub_chunks_x[ii_sub],sub_chunks_y[jj_sub]]
             slope=999.0
 
@@ -327,14 +332,14 @@ def main():
     chunks_row_final = np.append(row_chunk_main, [xlim2], axis=0)
     chunks_col_final = np.append(col_chunk_main, [ylim2], axis=0)
 
-#    nchild=int(nmaster/5)
+    #nchild=int(nmaster/5)
     nchild=100
     main_block_iteration=0
     for iter_row in range(len(chunks_row_final[:]))[0:-1]:
        for iter_col in range(len(chunks_col_final[:]))[0:-1]:
            print("LOOP:", iter_row,iter_col)
            # Write time series of the data for each master iteration
-           in_file = inpath_final+'store_time_series_'+np.str(chunks_row_final[iter_row])+'_'+np.str(chunks_row_final[iter_row+1])+'_'+np.str(chunks_col_final[iter_col])+'_'+np.str(chunks_col_final[iter_col+1])+'_.nc'
+           in_file = inpath_final+'store_time_series_'+np.str(chunks_row_final[iter_row])+'_'+np.str(chunks_row_final[iter_row+1])+'_'+np.str(chunks_col_final[iter_col])+'_'+np.str(chunks_col_final[iter_col+1])+'.nc'
            # Calculate trend from the each time series of master chunks 
            print('calculating trend for the chunk') 
            print(chunks_row_final[iter_row],chunks_row_final[iter_row+1],chunks_col_final[iter_col],chunks_col_final[iter_col+1],'***Row_SIZE***',chunks_row_final[iter_row+1]-chunks_row_final[iter_row],'***Col_SIZE***',chunks_col_final[iter_col+1]-chunks_col_final[iter_col]) 
@@ -365,7 +370,7 @@ def main():
     
            ''' Applying the multiple processing here, with process of choice, i use 4 for local and 16 for lustre '''
            ''' Here we pass the arguments to the initializer for pool so we use in the function used in multiple processing, it can be changed differently '''
-           nproc = 1
+           nproc = 4
            with Pool(processes=nproc, initializer=init_worker_nc, initargs=(var_dict,X_shape,Y_shape,step_chunk_x,step_chunk_y,final_chunk_x,final_chunk_y,start_chunk_x,start_chunk_y,in_file,outpath_final,iteration_final,indx_seasons[0])) as pool:
                '''I am not returning results, usually you can return and write the results after multiprocessing '''
                print('pool started')

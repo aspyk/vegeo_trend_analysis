@@ -117,6 +117,7 @@ def main():
                                                          green(args.end_date.isoformat()), 
                                                          green(','.join(args.action))) )
 
+    ## test to use a hash
     str_hash = '{0},{1},{2}'.format(args.start_date.isoformat(), args.end_date.isoformat(), ','.join([str(i) for i in [xlim1,xlim2,ylim1,ylim2]]))
     print(str_hash)
     hex_hash = hashlib.sha1(str_hash.encode("UTF-8")).hexdigest()
@@ -213,7 +214,7 @@ def main():
 
             for var in ['sn','zval','pval','len']:
                 list_arg = [input_path, output_path, merged_filename, xlim1, xlim2, ylim1, ylim2,
-                            f'{var} from {args.start_date.isoformat()} to {args.end_date.isoformat()}', var, 365]
+                            '{}:{} to {}'.format(hex_hash[:6], args.start_date.isoformat(), args.end_date.isoformat()), var, 365]
                 trend_file_merger.plot_trends(*list_arg)
 
 
