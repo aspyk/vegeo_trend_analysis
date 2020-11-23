@@ -1,5 +1,10 @@
+### Custom trend analysis
 # Project output folder
 output_*/
+tile_map*.png
+h52img*.png
+res*.png
+###
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

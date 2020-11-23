@@ -23,6 +23,7 @@ dimensions of 4 regions of MSG-Disk
 
 from datetime import datetime
 import pandas as pd
+import matplotlib.pyplot as plt
 import numpy as np
 import h5py
 from netCDF4 import Dataset
@@ -32,26 +33,7 @@ import re
 import glob
 import traceback
 from timeit import default_timer as timer
-
-
-def grouper(input_list, n = 2):
-    """
-    Generate tuple of n consecutive items from input_list
-    ex for n=2: [a,b,c,d] -> [[a,b],[b,c],[c,d]]
-    """
-    for i in range(len(input_list) - (n - 1)):
-        yield input_list[i:i+n]
-
-
-def plot2Darray(v, var='var'):
-    """Debug function to plot a 2D array in terminal"""
-    import matplotlib.pyplot as plt
-
-    plt.imshow(v)
-    imgname = 'h52img_{0}.png'.format(var)
-    plt.savefig(imgname)
-    print(f'Saved to {imgname}.')
-    os.system('/mnt/lfs/d30/vegeo/fransenr/CODES/tools/TerminalImageViewer/src/main/cpp/tiv ' + imgname)
+from generic import grouper, binned_statistic_dd
 
 
 def extract_valid_albedo(file_name,row0,row1,col0,col1):
@@ -127,6 +109,12 @@ def time_series_albedo(start, end, output_path, product_tag, xlim1,xlim2,ylim1,y
             ## Initialize an array series with nan
             series_albedo = np.full([len(file_paths_final_icare), row1-row0, col1-col0], np.nan)
 
+            ## Initialize an array to store histogram stats
+            nbins = 100
+            res_h = np.zeros((len(series), nbins))
+            fig = plt.figure()
+            ax = fig.add_subplot(111)
+            
             ## Create the chunk mask
             lwmsk_chunk = lwmsk[row0-xlim1:row1-xlim1,col0-ylim1:col1-ylim1]
             ocean = np.where(lwmsk_chunk==0)
@@ -175,7 +163,23 @@ def time_series_albedo(start, end, output_path, product_tag, xlim1,xlim2,ylim1,y
                   
                 ## Fill series 
                 series_albedo[dateindex,:] = net_albedo
+                series_albedo[dateindex,:] = net_albedo
              
+
+                h = np.histogram(net_albedo, bins=np.linspace(0.,1.,nbins+1))[0]
+                #res_h[dateindex] = np.log10(h) # w/o scaling
+                #res_h[dateindex] = np.log10(h/(np.count_nonzero(~np.isnan(net_albedo)))) # scale by total nb of not nan
+                res_h[dateindex] = np.log10(h/h.max()) # scale by max
+
+            #res_h[res_h==0.0] = np.nan
+            #plt.imshow(res_h, aspect='auto', origin='lower', extent=(0,20,0,mx))
+            ax.imshow(res_h.T, aspect='auto', origin='lower', extent=(0,len(series),0,1))
+            ax.grid()
+            ax.set_xlabel('date')
+            ax.set_ylabel('albedo')
+            plt.savefig('res_hist.png')
+
+
             print(timer()-t0)
  
             ## Write time series of the data for each master iteration
