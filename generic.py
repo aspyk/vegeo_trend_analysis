@@ -1,13 +1,62 @@
 import numpy as np
 
 
-def grouper(input_list, n = 2):
-    """
-    Generate tuple of n consecutive items from input_list
-    ex for n=2: [a,b,c,d] -> [[a,b],[b,c],[c,d]]
-    """
-    for i in range(len(input_list) - (n - 1)):
-        yield input_list[i:i+n]
+class Splitter():
+    
+    class Chunk():
+        def __init__(self, row0, row1, col0, col1):
+            self.r0 = row0
+            self.r1 = row1
+            self.c0 = col0
+            self.c1 = col1
+
+            self.dim = (self.r1-self.r0, self.c1-self.c0)
+
+            self.global_lim = (self.r0, self.r1, self.c0, self.c1)
+
+            self.slice = (slice(self.r0, self.r1), slice(self.c0, self.c1))
+    
+    def __init__(self, xlim1, xlim2, ylim1, ylim2, nmaster):
+        self.x1 = xlim1
+        self.x2 = xlim2
+        self.y1 = ylim1
+        self.y2 = ylim2
+        self.nmaster = nmaster
+
+        ## the master_chunk or nmaster slices the region and can be a number, 100, 200, 500 etc., currently tested for 500 X 500 '''
+        self.chunks_row = list(range(xlim1, xlim2, nmaster))+[xlim2]
+        self.chunks_col = list(range(ylim1, ylim2, nmaster))+[ylim2]
+   
+        self.list = []
+        for row0,row1 in self.grouper(self.chunks_row):
+            for col0,col1 in self.grouper(self.chunks_col):
+                self.list.append(self.Chunk(row0,row1,col0,col1))
+    
+    def global_limits(self, fmt=None):
+        """
+        Return the global limits with the specified format
+
+        fmt can be:
+        - None    : return tuple
+        - 'str'   : return a string
+        - 'slice' : return slice object
+        """
+
+        if fmt is None:
+            return (self.x1, self.x2, self.y1, self.y2)
+        elif fmt=='str':
+            return ','.join([str(i) for i in [self.x1, self.x2, self.y1, self.y2]])
+        elif fmt=='slice':
+            return (slice(self.x1, self.x2), slice(self.y1, self.y2))
+        
+
+    def grouper(self, input_list, n=2):
+        """
+        Generate tuple of n consecutive items from input_list
+        ex for n=2: [a,b,c,d] -> [[a,b],[b,c],[c,d]]
+        """
+        for i in range(len(input_list) - (n - 1)):
+            yield input_list[i:i+n]
 
 
 def plot2Darray(v, var='var'):

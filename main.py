@@ -7,7 +7,7 @@ import datetime
 import os,sys
 import pathlib
 import hashlib
-
+import generic
 
 
 def parse_args():
@@ -109,21 +109,23 @@ def main():
     ylim2 = args.zone_coor[1]
 
     nmaster = args.master_chunk
-    
+   
+    # Generate chunks with splitter object
+    chunks = generic.Splitter(xlim1, xlim2, ylim1, ylim2, nmaster)
+
     # print info
     print("Run {4} of {0} in {1} from {2} to {3}".format(green(','.join(args.product_tag)),
-                                                         green(','.join([str(i) for i in [xlim1,xlim2,ylim1,ylim2]])),
+                                                         green(chunks.global_limits(fmt='str')),
                                                          green(args.start_date.isoformat()),
                                                          green(args.end_date.isoformat()), 
                                                          green(','.join(args.action))) )
 
     ## test to use a hash
-    str_hash = '{0},{1},{2}'.format(args.start_date.isoformat(), args.end_date.isoformat(), ','.join([str(i) for i in [xlim1,xlim2,ylim1,ylim2]]))
+    str_hash = '{0},{1},{2}'.format(args.start_date.isoformat(), args.end_date.isoformat(), chunks.global_limits(fmt='str'))
     print(str_hash)
     hex_hash = hashlib.sha1(str_hash.encode("UTF-8")).hexdigest()
     print(hex_hash[:6])
     print(hex_hash[:8])
-    print(hex_hash[:10])
 
 
     ## Run the selected pipeline actions
@@ -145,7 +147,8 @@ def main():
             print('  Process {0}'.format(yellow(prod)))
             pathlib.Path(output_path+'/'+prod).mkdir(parents=True, exist_ok=True)
             #getattr(time_series_trends, 'time_series_{0}'.format(prod))(start_year, end_year, start_month, end_month, output_path, prod, xlim1, xlim2, ylim1, ylim2, nmaster)
-            getattr(time_series_reader, 'time_series_{0}'.format(prod))(args.start_date, args.end_date, output_path, prod, xlim1, xlim2, ylim1, ylim2, nmaster)
+            #getattr(time_series_reader, 'time_series_{0}'.format(prod))(args.start_date, args.end_date, output_path, prod, xlim1, xlim2, ylim1, ylim2, nmaster)
+            getattr(time_series_reader, 'time_series_{0}'.format(prod))(args.start_date, args.end_date, output_path, prod, chunks)
 
     # TREND
     #------------------------------------------------#
