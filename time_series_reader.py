@@ -58,6 +58,26 @@ def extract_valid_albedo(file_name,row0,row1,col0,col1):
     return albedo
 
 
+def get_product_files(product, series, key='default'):
+
+    product_files = {}
+
+    if product=='albedo':
+        if key=='default':
+            product_files['mdal'] = get_file_paths(product, 'mdal', series)
+            product_files['mdal_nrt'] = get_file_paths(product, 'mdal_nrt', series)
+
+    if product=='lai':
+        if key=='default':
+            product_files['mdal'] = get_file_paths(product, 'mdal', series)
+
+    if product=='dssf':
+        if key=='default':
+            product_files['mdal_nrt'] = get_file_paths(product, 'mdal_nrt', series)
+
+    return product_files
+
+
 def get_file_paths(product, key, series):
 
     if product=='albedo':
@@ -88,11 +108,20 @@ def get_file_paths(product, key, series):
             file_paths_one = [file_paths_root_one.format(d.strftime('%Y%m%d')) for d in series]     
             file_paths_two = [file_pattern.format(d.strftime('%Y%m%d')) for d in series]     
             file_paths_final = [file_paths_one[f]+file_paths_two[f] for f in range(len(file_paths_one))]
-    
+   
+    elif product=='dssf':
+        
+        if key=='mdal_nrt':
+        
+            root_dir='/cnrm/vegeo/SAT/DATA/MSG/NRT-Operational/DSSF/'
+            file_paths_root=[root_dir+'DSSF-'+str('{:04}'.format(d.year))+str('{:02}'.format(d.month))+str('{:02}'.format(d.day))+'/' for d in s]
+            file_pattern='HDF5_LSASAF_MSG_DSSF_MSG-Disk_{}.h5'
+            file_paths_one=[file_pattern.format(d.strftime('%Y%m%d%H%M')) for d in s]
+            file_paths_final=[file_paths_root[f]+file_paths_one[f] for f in range(len(file_paths_one))]
 
     elif product=='lai':
 
-        if key=='daily':
+        if key=='mdal':
 
             root_dir = '/cnrm/vegeo/SAT/DATA/MSG_LAI_DAILY_CDR/'
             #file_pattern = 'HDF5_LSASAF_MSG_LAI-D10_MSG-Disk_{}0000'
@@ -103,7 +132,11 @@ def get_file_paths(product, key, series):
     return file_paths_final
 
 
-def extract_albedo(chunk, date, files, ocean, land):
+def extract_albedo(chunk, date, dateindex, file_paths_final):
+    files = {}
+    files['mdal_nrt'] = file_paths_final['mdal_nrt'][dateindex]
+    files['mdal'] = file_paths_final['mdal'][dateindex]
+    
     ## Reading MDAL albedo
     if date.year>=2016:
         file_mdal = files['mdal_nrt']
@@ -113,18 +146,10 @@ def extract_albedo(chunk, date, files, ocean, land):
         file_mdal = files['mdal']
     print(file_mdal)
     albedo = extract_valid_albedo(file_mdal, *chunk.global_lim)
+    
     ## If error in reading, go to the next iteration
     if albedo is None:
         return None
-
-    ## Apply mask
-    if 0:
-        net_albedo = np.full(chunk.dim, np.nan)
-
-        if len(land[0])>1:
-            net_albedo[land] = albedo[land]
-
-        return net_albedo
 
     return albedo
 
@@ -142,8 +167,10 @@ def extract_time_series(start, end, output_path, product, chunks):
     lwmsk = hlw['LWMASK'][chunks.global_limits('slice')]
     hlw.close()
 
-    file_paths_final_mdal = get_file_paths(product, 'mdal', dseries)
-    file_paths_final_mdal_nrt = get_file_paths(product, 'mdal_nrt', dseries)
+    #file_paths_final_mdal = get_file_paths(product, 'mdal', dseries)
+    #file_paths_final_mdal_nrt = get_file_paths(product, 'mdal_nrt', dseries)
+    
+    file_paths_final = get_product_files(product, dseries)
     
     for chunk in chunks.list:
         t0 = timer()
@@ -168,11 +195,8 @@ def extract_time_series(start, end, output_path, product, chunks):
 
         for dateindex,date in enumerate(dseries):
 
-            files = {}
-            files['mdal_nrt'] = file_paths_final_mdal_nrt[dateindex]
-            files['mdal'] = file_paths_final_mdal[dateindex]
 
-            result = extract_albedo(chunk, date, files, ocean, land)
+            result = extract_albedo(chunk, date, dateindex, file_paths_final)
               
             if result is not None:
                 ## Fill series 
@@ -210,6 +234,8 @@ def extract_time_series(start, end, output_path, product, chunks):
         nc_iter.variables['time_series_chunk'][:] = tseries
             
         nc_iter.close()
+
+        print(">>> Data chunk written to:", write_file)
 
         del tseries       
 
