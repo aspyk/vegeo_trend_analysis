@@ -104,26 +104,12 @@ def get_file_paths(product, key, series):
 
 
 def extract_albedo(chunk, date, files, ocean, land):
-    ## Reading ICARE albedo 
-    if date.year>=2017:
-        print ("ICARE albedo not available, Using NRT data; year > 2016")
-    elif 2005 <= date.year < 2017:     
-        #file_icare = file_paths_final_icare[dateindex]
-        file_icare = files['icare']
-        print(file_icare)
-        albedo_icare = extract_valid_albedo(file_icare,*chunk.global_lim)
-        ## If error in reading, go to the next iteration
-        if albedo_icare is None:
-            return None
-        
     ## Reading MDAL albedo
     if date.year>=2016:
-        #file_mdal = file_paths_final_mdal_nrt[dateindex]
         file_mdal = files['mdal_nrt']
         if date.year<=2018:
             file_mdal += '.h5'
     else:   
-        #file_mdal = file_paths_final_mdal[dateindex]
         file_mdal = files['mdal']
     print(file_mdal)
     albedo_mdal = extract_valid_albedo(file_mdal,*chunk.global_lim)
@@ -134,21 +120,13 @@ def extract_albedo(chunk, date, files, ocean, land):
     ## Apply mask
     net_albedo = np.full(chunk.dim, np.nan)
 
-    if 2005 <= date.year <= 2016:
-        if len(ocean[0])>1:
-            net_albedo[ocean] = albedo_icare[ocean]
-        if len(land[0])>1:
-            net_albedo[land] = albedo_mdal[land]
-    else:
-        if len(ocean[0])>1:
-            net_albedo[ocean] = albedo_mdal[ocean]
-        if len(land[0])>1:
-            net_albedo[land] = albedo_mdal[land]
+    if len(land[0])>1:
+        net_albedo[land] = albedo_mdal[land]
 
     return net_albedo
 
 
-def time_series_albedo(start, end, output_path, product, chunks ):
+def extract_time_series(start, end, output_path, product, chunks):
     """
     start: datetime object
     end: datetime object
@@ -189,7 +167,6 @@ def time_series_albedo(start, end, output_path, product, chunks ):
         for dateindex,date in enumerate(dseries):
 
             files = {}
-            files['icare'] = file_paths_final_icare[dateindex]
             files['mdal_nrt'] = file_paths_final_mdal_nrt[dateindex]
             files['mdal'] = file_paths_final_mdal[dateindex]
 
