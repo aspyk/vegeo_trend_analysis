@@ -144,8 +144,8 @@ def main():
         for prod in args.product_tag:
             print('  Process {0}'.format(yellow(prod)))
             pathlib.Path(output_path+'/'+prod).mkdir(parents=True, exist_ok=True)
-            #getattr(time_series_trends, 'time_series_{0}'.format(prod))(start_year, end_year, start_month, end_month, output_path, prod, xlim1, xlim2, ylim1, ylim2, nmaster)
-            getattr(time_series_reader, 'time_series_{0}'.format(prod))(args.start_date, args.end_date, output_path, prod, xlim1, xlim2, ylim1, ylim2, nmaster)
+            getattr(time_series_trends, 'time_series_{0}'.format(prod))(start_year, end_year, start_month, end_month, output_path, prod, xlim1, xlim2, ylim1, ylim2, nmaster)
+            #getattr(time_series_reader, 'time_series_{0}'.format(prod))(args.start_date, args.end_date, output_path, prod, xlim1, xlim2, ylim1, ylim2, nmaster)
 
     # TREND
     #------------------------------------------------#
