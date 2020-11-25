@@ -112,18 +112,21 @@ def extract_albedo(chunk, date, files, ocean, land):
     else:   
         file_mdal = files['mdal']
     print(file_mdal)
-    albedo_mdal = extract_valid_albedo(file_mdal,*chunk.global_lim)
+    albedo = extract_valid_albedo(file_mdal, *chunk.global_lim)
     ## If error in reading, go to the next iteration
-    if albedo_mdal is None:
+    if albedo is None:
         return None
 
     ## Apply mask
-    net_albedo = np.full(chunk.dim, np.nan)
+    if 0:
+        net_albedo = np.full(chunk.dim, np.nan)
 
-    if len(land[0])>1:
-        net_albedo[land] = albedo_mdal[land]
+        if len(land[0])>1:
+            net_albedo[land] = albedo[land]
 
-    return net_albedo
+        return net_albedo
+
+    return albedo
 
 
 def extract_time_series(start, end, output_path, product, chunks):
@@ -139,7 +142,6 @@ def extract_time_series(start, end, output_path, product, chunks):
     lwmsk = hlw['LWMASK'][chunks.global_limits('slice')]
     hlw.close()
 
-    file_paths_final_icare = get_file_paths(product, 'icare', dseries)
     file_paths_final_mdal = get_file_paths(product, 'mdal', dseries)
     file_paths_final_mdal_nrt = get_file_paths(product, 'mdal_nrt', dseries)
     
