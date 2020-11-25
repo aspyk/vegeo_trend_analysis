@@ -194,7 +194,7 @@ def time_series_albedo(start_year,end_year,start_month,end_month,output_path,pro
                     pass		
     
            '''Write time series of the data for each master iteration '''
-           write_file=output_path+product_tag+'/store_time_series_'+np.str(chunks_row_final[iter_row])+'_'+np.str(chunks_row_final[iter_row+1])+'_'+np.str(chunks_col_final[iter_col])+'_'+np.str(chunks_col_final[iter_col+1])+'_.nc'
+           write_file=output_path+product_tag+'/store_time_series_'+np.str(chunks_row_final[iter_row])+'_'+np.str(chunks_row_final[iter_row+1])+'_'+np.str(chunks_col_final[iter_col])+'_'+np.str(chunks_col_final[iter_col+1])+'.nc'
 
     
            nc_iter = Dataset(write_file, 'w', format='NETCDF4')
@@ -294,7 +294,7 @@ def time_series_lai(start_year,end_year,start_month,end_month,output_path,produc
                     pass		
     
            '''Write time series of the data for each master iteration '''
-           write_file = output_path+product_tag+'/store_time_series_'+np.str(chunks_row_final[iter_row])+'_'+np.str(chunks_row_final[iter_row+1])+'_'+np.str(chunks_col_final[iter_col])+'_'+np.str(chunks_col_final[iter_col+1])+'_.nc'
+           write_file = output_path+product_tag+'/store_time_series_'+np.str(chunks_row_final[iter_row])+'_'+np.str(chunks_row_final[iter_row+1])+'_'+np.str(chunks_col_final[iter_col])+'_'+np.str(chunks_col_final[iter_col+1])+'.nc'
 
            nc_iter = Dataset(write_file, 'w', format='NETCDF4')
            
@@ -434,7 +434,7 @@ def  time_series_lst(start_year,end_year,start_month,end_month,output_path,produ
     
     
            '''Write time series of the data for each master iteration '''
-           write_file=output_path+product_tag+'/store_time_series_'+np.str(chunks_row_final[iter_row])+'_'+np.str(chunks_row_final[iter_row+1])+'_'+np.str(chunks_col_final[iter_col])+'_'+np.str(chunks_col_final[iter_col+1])+'_.nc'
+           write_file=output_path+product_tag+'/store_time_series_'+np.str(chunks_row_final[iter_row])+'_'+np.str(chunks_row_final[iter_row+1])+'_'+np.str(chunks_col_final[iter_col])+'_'+np.str(chunks_col_final[iter_col+1])+'.nc'
            nc_iter = Dataset(write_file, 'w', format='NETCDF4')
            
            nc_iter.createDimension('x', pandas_series_lst.shape[0])
@@ -527,7 +527,7 @@ def time_series_evapo(start_year,end_year,start_month,end_month,output_path,prod
                     pass		
     
            '''Write time series of the data for each master iteration '''
-           write_file=output_path+product_tag+'/store_time_series_'+np.str(chunks_row_final[iter_row])+'_'+np.str(chunks_row_final[iter_row+1])+'_'+np.str(chunks_col_final[iter_col])+'_'+np.str(chunks_col_final[iter_col+1])+'_.nc'
+           write_file=output_path+product_tag+'/store_time_series_'+np.str(chunks_row_final[iter_row])+'_'+np.str(chunks_row_final[iter_row+1])+'_'+np.str(chunks_col_final[iter_col])+'_'+np.str(chunks_col_final[iter_col+1])+'.nc'
            nc_iter = Dataset(write_file, 'w', format='NETCDF4')
            
            nc_iter.createDimension('x', store_series.shape[0])
@@ -624,7 +624,7 @@ def time_series_dssf(start_year,end_year,start_month,end_month,output_path,produ
                               pass		    
                     
            '''Write time series of the data for each master iteration '''
-           write_file=output_path+product_tag+'/store_time_series_'+np.str(chunks_row_final[iter_row])+'_'+np.str(chunks_row_final[iter_row+1])+'_'+np.str(chunks_col_final[iter_col])+'_'+np.str(chunks_col_final[iter_col+1])+'_.nc'
+           write_file=output_path+product_tag+'/store_time_series_'+np.str(chunks_row_final[iter_row])+'_'+np.str(chunks_row_final[iter_row+1])+'_'+np.str(chunks_col_final[iter_col])+'_'+np.str(chunks_col_final[iter_col+1])+'.nc'
            nc_iter = Dataset(write_file, 'w', format='NETCDF4')
            
            nc_iter.createDimension('x', store_series.shape[0])
