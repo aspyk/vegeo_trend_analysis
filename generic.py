@@ -2,9 +2,21 @@ import numpy as np
 
 
 class Splitter():
+    """
+    Class to handle the partitioning of the selected region into chunks.
+
+    Args:
+        xlim1,xlim2,ylim1,ylim2: global region coordinates on MSG disk.
+        nmaster: the size of the chunks, 500 by default.
+    """
     
     class Chunk():
-        def __init__(self, row0, row1, col0, col1):
+        def __init__(self, parent, row0, row1, col0, col1):
+            """
+            global_lim/slice are in the MSG disk reference
+            local_lim/slice are in the extracted region reference
+            """
+            self.parent = parent
             self.r0 = row0
             self.r1 = row1
             self.c0 = col0
@@ -13,10 +25,22 @@ class Splitter():
             self.dim = (self.r1-self.r0, self.c1-self.c0)
 
             self.global_lim = (self.r0, self.r1, self.c0, self.c1)
-
-            self.slice = (slice(self.r0, self.r1), slice(self.c0, self.c1))
+            #self.global_slice = (slice(self.r0, self.r1), slice(self.c0, self.c1))
+            self.global_slice = (slice(*self.global_lim[:2]), slice(*self.global_lim[2:]))
     
-    def __init__(self, xlim1, xlim2, ylim1, ylim2, nmaster):
+            self.local_lim = (self.r0-self.parent.x1, self.r1-self.parent.x1, self.c0-self.parent.y1, self.c1-self.parent.y1)
+            self.local_slice = (slice(*self.local_lim[:2]), slice(*self.local_lim[2:]))
+
+        def get_lim(ref, fmt):
+            """
+            ref: 'loc' or 'glob'
+            fmt: 'tuple' or 'slice'
+            Not sure if needed yet..
+            """
+            pass
+
+
+    def __init__(self, xlim1, xlim2, ylim1, ylim2, nmaster=500):
         self.x1 = xlim1
         self.x2 = xlim2
         self.y1 = ylim1
@@ -30,7 +54,7 @@ class Splitter():
         self.list = []
         for row0,row1 in self.grouper(self.chunks_row):
             for col0,col1 in self.grouper(self.chunks_col):
-                self.list.append(self.Chunk(row0,row1,col0,col1))
+                self.list.append(self.Chunk(self, row0,row1,col0,col1))
     
     def global_limits(self, fmt=None):
         """

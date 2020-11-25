@@ -103,7 +103,7 @@ def get_file_paths(product, key, series):
     return file_paths_final
 
 
-def extract_albedo(date, files, ocean, land):
+def extract_albedo(chunk, date, files, ocean, land):
     ## Reading ICARE albedo 
     if date.year>=2017:
         print ("ICARE albedo not available, Using NRT data; year > 2016")
@@ -111,7 +111,7 @@ def extract_albedo(date, files, ocean, land):
         #file_icare = file_paths_final_icare[dateindex]
         file_icare = files['icare']
         print(file_icare)
-        albedo_icare = extract_valid_albedo(file_icare,ro0,row1,col0,col1)
+        albedo_icare = extract_valid_albedo(file_icare,*chunk.global_lim)
         ## If error in reading, go to the next iteration
         if albedo_icare is None:
             return None
@@ -126,13 +126,13 @@ def extract_albedo(date, files, ocean, land):
         #file_mdal = file_paths_final_mdal[dateindex]
         file_mdal = files['mdal']
     print(file_mdal)
-    albedo_mdal = extract_valid_albedo(file_mdal,row0,row1,col0,col1)
+    albedo_mdal = extract_valid_albedo(file_mdal,*chunk.global_lim)
     ## If error in reading, go to the next iteration
     if albedo_mdal is None:
         return None
 
     ## Apply mask
-    net_albedo = np.full((row1-row0,col1-col0), np.nan)
+    net_albedo = np.full(chunk.dim, np.nan)
 
     if 2005 <= date.year <= 2016:
         if len(ocean[0])>1:
@@ -167,15 +167,12 @@ def time_series_albedo(start, end, output_path, product, chunks ):
     
     for chunk in chunks.list:
         t0 = timer()
-        #print('***', 'Row/Col_SIZE=({},{})'.format(row1-row0, col1-col0), 'GLOBAL_LOC=[{}:{},{}:{}]'.format(row0, row1, col0, col1)) 
         print('***', 'Row/Col_SIZE=({},{})'.format(*chunk.dim), 'GLOBAL_LOCATION=[{}:{},{}:{}]'.format(*chunk.global_lim))
        
         ## Initialize an array series with nan
-        #tseries = np.full([len(dseries), row1-row0, col1-col0], np.nan)
         tseries = np.full([len(dseries), *chunk.dim], np.nan)
         print(tseries.shape)
 
-        sys.exit()
 
         ## Initialize an array to store histogram stats
         nbins = 100
@@ -184,9 +181,10 @@ def time_series_albedo(start, end, output_path, product, chunks ):
         ax = fig.add_subplot(111)
         
         ## Create the chunk mask
-        lwmsk_chunk = lwmsk[row0-xlim1:row1-xlim1,col0-ylim1:col1-ylim1]
+        lwmsk_chunk = lwmsk[chunk.local_slice]
         ocean = np.where(lwmsk_chunk==0)
         land = np.where(lwmsk_chunk==1)
+
 
         for dateindex,date in enumerate(dseries):
 
@@ -195,7 +193,7 @@ def time_series_albedo(start, end, output_path, product, chunks ):
             files['mdal_nrt'] = file_paths_final_mdal_nrt[dateindex]
             files['mdal'] = file_paths_final_mdal[dateindex]
 
-            result = extract_albedo(date, files, ocean, land)
+            result = extract_albedo(chunk, date, files, ocean, land)
               
             if result is not None:
                 ## Fill series 
@@ -211,7 +209,6 @@ def time_series_albedo(start, end, output_path, product, chunks ):
                 continue
 
         #res_h[res_h==0.0] = np.nan
-        #plt.imshow(res_h, aspect='auto', origin='lower', extent=(0,20,0,mx))
         ax.imshow(res_h.T, aspect='auto', origin='lower', extent=(0,len(dseries),0,1))
         ax.grid()
         ax.set_xlabel('date')
@@ -222,7 +219,7 @@ def time_series_albedo(start, end, output_path, product, chunks ):
         print(timer()-t0)
 
         ## Write time series of the data for each master iteration
-        write_file = output_path+product+'/store_time_series_'+str(row0)+'_'+str(row1)+'_'+str(col0)+'_'+str(col1)+'.nc'
+        write_file = output_path+product+'/store_time_series_'+'_'.join([str(i) for i in chunk.global_lim])+'.nc'
 
         nc_iter = Dataset(write_file, 'w', format='NETCDF4')
         
