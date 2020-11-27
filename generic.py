@@ -1,4 +1,5 @@
 import numpy as np
+import hashlib
 
 
 class Splitter():
@@ -22,14 +23,16 @@ class Splitter():
             self.c0 = col0
             self.c1 = col1
 
+            # (xdim, ydim)
             self.dim = (self.r1-self.r0, self.c1-self.c0)
 
             self.global_lim = (self.r0, self.r1, self.c0, self.c1)
-            #self.global_slice = (slice(self.r0, self.r1), slice(self.c0, self.c1))
-            self.global_slice = (slice(*self.global_lim[:2]), slice(*self.global_lim[2:]))
+            # swap to fit numpy array indexing: array[y1:y2,x1:x2]
+            self.global_slice = (slice(*self.global_lim[2:]), slice(*self.global_lim[:2]))
     
             self.local_lim = (self.r0-self.parent.x1, self.r1-self.parent.x1, self.c0-self.parent.y1, self.c1-self.parent.y1)
-            self.local_slice = (slice(*self.local_lim[:2]), slice(*self.local_lim[2:]))
+            # swap to fit numpy array indexing: array[y1:y2,x1:x2]
+            self.local_slice = (slice(*self.local_lim[2:]), slice(*self.local_lim[:2]))
 
         def get_lim(ref, fmt):
             """
@@ -52,8 +55,8 @@ class Splitter():
         self.chunks_col = list(range(ylim1, ylim2, nmaster))+[ylim2]
    
         self.list = []
-        for row0,row1 in self.grouper(self.chunks_row):
-            for col0,col1 in self.grouper(self.chunks_col):
+        for col0,col1 in self.grouper(self.chunks_col):
+            for row0,row1 in self.grouper(self.chunks_row):
                 self.list.append(self.Chunk(self, row0,row1,col0,col1))
     
     def global_limits(self, fmt=None):
@@ -71,7 +74,8 @@ class Splitter():
         elif fmt=='str':
             return ','.join([str(i) for i in [self.x1, self.x2, self.y1, self.y2]])
         elif fmt=='slice':
-            return (slice(self.x1, self.x2), slice(self.y1, self.y2))
+            # swap to fit numpy array indexing: array[y1:y2,x1:x2]
+            return (slice(self.y1, self.y2), slice(self.x1, self.x2))
         
 
     def grouper(self, input_list, n=2):
@@ -350,5 +354,19 @@ def binned_statistic_dd(sample, values, statistic='mean',
 
     #return BinnedStatisticddResult(result, edges, binnumbers)
     return (result, edges)
+
+def get_case_hash(product, start, end, limits):
+    """ Return hash of the case from string parameters
+    Args:
+        prod: string name of the product
+        start,end: date in isoformat YYYY-MM-DD (use .isoformat() on datetime object)
+        lim: comma separated region limits
+    """
+    str_hash = '{0},{1},{2},{3}'.format(product, start, end, limits)
+    #print(str_hash)
+    hex_hash = hashlib.sha1(str_hash.encode("UTF-8")).hexdigest()
+
+    return hex_hash[:6]
+
 
 
