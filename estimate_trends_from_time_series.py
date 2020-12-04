@@ -9,7 +9,6 @@ code to prepare tendencies based on Man-kendall test
 
 
 from datetime import datetime
-import pandas as pd
 import numpy as np
 from scipy.stats import mstats
 import mankendall_fortran_repeat_exp2 as m
@@ -18,38 +17,14 @@ import itertools
 from netCDF4 import Dataset
 from time import sleep
 import sys, glob, os
-import argparse
 import traceback
 from timeit import default_timer as timer
-import matplotlib.pyplot as plt
 import psutil
 
 
-def parse_args(command=None):
-    parser = argparse.ArgumentParser(description='The parameters are being given as arguments for input time series,', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('-styr','--start_year', help='start year for read of time series')    
-    parser.add_argument('-enyr','--end_year', help='end year for read of time series')    
-    parser.add_argument('-stmn','--start_month', help='start month for read of time series')    
-    parser.add_argument('-enmn','--end_month', help='end month for read of time series')    
-    parser.add_argument('-i','--input', help='input path')    
-    parser.add_argument('-o','--output', help='output path')    
-    parser.add_argument('-ptag','--product_tag', help='product tag or product dataset, either albedo, lai, evapo, dssf, fapar ')    
-    parser.add_argument('-x1','--xlim1', help='limit x1 ')    
-    parser.add_argument('-x2','--xlim2', help='limit x2 ')    
-    parser.add_argument('-y1','--ylim1', help='limit y1 ')    
-    parser.add_argument('-y2','--ylim2', help='limit y2 ')    
-    parser.add_argument('-n_master','--master_chunk', help='size of master chunks')
-    
-    #parser.add_argument('-l', '--loglevel', help='log level. CRITICAL ERROR WARNING INFO or DEBUG', default='ERROR')
-    if command is not None:
-        args = parser.parse_args(command)
-    else:
-        args = parser.parse_args()
-    return args
-
     
 def init_worker_nc(var_dict, X_shape, Y_shape, step_chunk_x, step_chunk_y, final_chunk_x, final_chunk_y,
-                   start_chunk_x, start_chunk_y, file_timeseries, file_outpath, iteration_final, indx_filter):
+                   start_chunk_x, start_chunk_y, file_timeseries, file_outpath, iteration_final):
         '''
         Initialize the pool with boundaries of data to be read and write
         currently, the last version of the code uses only the input time series data
@@ -65,7 +40,6 @@ def init_worker_nc(var_dict, X_shape, Y_shape, step_chunk_x, step_chunk_y, final
         var_dict['final_chunk_y'] = final_chunk_y
         var_dict['start_chunk_x'] = start_chunk_x
         var_dict['start_chunk_y'] = start_chunk_y
-        var_dict['Indx_seasons'] = indx_filter
         var_dict['file_input_time_series'] = file_timeseries
         var_dict['file_output_tendencies'] = file_outpath
         var_dict['iteration_last_check'] = iteration_final
@@ -76,7 +50,7 @@ def processInput_trends(tuple_limits1 ,tuple_limits2, parent_iteration, child_it
 
     process = psutil.Process(os.getpid())
     current = current_process()
-    print(current._identity, f'{process.memory_info().rss/1024/1024} Mo')
+    #print(current._identity, f'{process.memory_info().rss/1024/1024} Mo')
 
     # Reading the input time series file from main chunk, configured length of time series X 500 X 500; it varies if different chunks are used
     hdf_ts = Dataset(var_dict['file_input_time_series'], 'r', format='NETCDF4')
@@ -107,15 +81,13 @@ def processInput_trends(tuple_limits1 ,tuple_limits2, parent_iteration, child_it
     var_temp_output = np.empty([step_chunk1,step_chunk2,4])    
     var_temp_output[:] = np.NaN
     # NaN matrix by default
-    print ('pool worker started: ')
-    
-    print('Blocks #### Row :',tuple_limits1,'TO :',tuple_limits1+step_chunk1,'#### Column :',tuple_limits2,'TO :',tuple_limits2+step_chunk2)
+    print ('>>> Block started:   ROW: [{}:{}] COL: [{}:{}]'.format(tuple_limits1, tuple_limits1+step_chunk1, tuple_limits2, tuple_limits2+step_chunk2))
 
     
-
-    print("hdf_ts.variables['time_series_chunk'].shape:", hdf_ts.variables['time_series_chunk'].shape)
-    print('iter_subchunk_x:',iter_subchunk_x, 'step_chunk1:', step_chunk1)
-    print('iter_subchunk_y:',iter_subchunk_y, 'step_chunk2:', step_chunk2)
+    ## DEBUG
+    #print("hdf_ts.variables['time_series_chunk'].shape:", hdf_ts.variables['time_series_chunk'].shape)
+    #print('iter_subchunk_x:',iter_subchunk_x, 'step_chunk1:', step_chunk1)
+    #print('iter_subchunk_y:',iter_subchunk_y, 'step_chunk2:', step_chunk2)
 
     # Reduce loop indices to fit the shape of data shape is no nchild multiple
     #if iter_subchunk_x+step_chunk1>hdf_ts.variables['time_series_chunk'].shape[1]:
@@ -138,7 +110,7 @@ def processInput_trends(tuple_limits1 ,tuple_limits2, parent_iteration, child_it
     t00 = timer()
     t000 = timer()
     t_mean = 0.
-    print(current._identity, f'{process.memory_info().rss/1024/1024} Mo')
+    #print(current._identity, f'{process.memory_info().rss/1024/1024} Mo')
     for ii_sub in range(len(sub_chunks_x)):
         # dimension of variable: time,x,y
         # preload all the y data here to avoid overhead due to calling Dataset.variables at each iteration in the inner loop
@@ -229,8 +201,8 @@ def processInput_trends(tuple_limits1 ,tuple_limits2, parent_iteration, child_it
             print(np.nanmin(v), np.nanmax(v))
             t00 = timer()
     
-    print(f't000tot.p{current._identity[0]} {timer()-t000:.3f}s {process.memory_info().rss/1024/1024:.2f}Mo')
-    print('pool completed:  Blocks #### Row :',tuple_limits1,'TO :',tuple_limits1+step_chunk1,'#### Column :',tuple_limits2,'TO :',tuple_limits2+step_chunk2)
+    #print(f't000tot.p{current._identity[0]} {timer()-t000:.3f}s {process.memory_info().rss/1024/1024:.2f}Mo')
+    print ('<<< Block completed: ROW: [{}:{}] COL: [{}:{}]'.format(tuple_limits1, tuple_limits1+step_chunk1, tuple_limits2, tuple_limits2+step_chunk2))
     write_string0 = ("ITERATION_MASTER_" + np.str(parent_iteration)  
                      + "_ITERATION_CHILD_" + np.str(child_iteration)  
                      + "_ROW_" + np.str(tuple_limits1) + '_' + np.str(tuple_limits1+step_chunk1) 
@@ -241,8 +213,8 @@ def processInput_trends(tuple_limits1 ,tuple_limits2, parent_iteration, child_it
     '''var_dict['file_output_tendencies'] prepared from the initializer routes the tendencies files to output destination as defined by product_tag previously '''
 
     if lock.acquire():
-        print ('Pool process Thread Locked:')
-        print ('Pool process Writing NetCDF:')
+        #print ('Pool process Thread Locked:')
+        #print ('Pool process Writing NetCDF:')
         nc_output = Dataset(write_string,'w')
         xdim = nc_output.createDimension('X_dim',step_chunk1)
         ydim = nc_output.createDimension('Y_dim',step_chunk2)
@@ -261,8 +233,8 @@ def processInput_trends(tuple_limits1 ,tuple_limits2, parent_iteration, child_it
         
         nc_output.close() 
         lock.release()
-        print ('Pool process Thread Released:')
-        print ('Pool process worker finished: ')
+        #print ('Pool process Thread Released:')
+        #print ('Pool process worker finished: ')
    
         hdf_ts.close() 
     
@@ -275,12 +247,6 @@ def processInput_trends(tuple_limits1 ,tuple_limits2, parent_iteration, child_it
 
 def main():
 
-    start_year = int(args.start_year)
-    end_year = int(args.end_year)
-    
-    start_month = int(args.start_month)
-    end_month = int(args.end_month)
-    
     input_path = args.input
 
     output_path = args.output
@@ -293,42 +259,16 @@ def main():
     ylim2 = int(args.ylim2)
     nmaster = int(args.master_chunk)
     
-    if product_tag=='albedo':
-        print('ALBEDO process')
-        inpath_final = input_path+'/'+product_tag+'/'
-        outpath_final = output_path+'/'+product_tag+'/'
-    if product_tag=='lst':
-        print('LST process')
-        inpath_final = input_path+'/'+product_tag+'/'
-        outpath_final = output_path+'/'+product_tag+'/'
-    if product_tag=='lai':
-        print('LAI process')
-        inpath_final = input_path+'/'+product_tag+'/'
-        outpath_final = output_path+'/'+product_tag+'/'
-    if product_tag=='evapo':
-        print('EVAPO process')
-        inpath_final = input_path+'/'+product_tag+'/'
-        outpath_final = output_path+'/'+product_tag+'/'
-    if product_tag=='dssf':
-        print('DSSF process')
-        inpath_final = input_path+'/'+product_tag+'/'
-        outpath_final = output_path+'/'+product_tag+'/'
-
-    inpath_final = os.path.normpath(inpath_final) + os.sep
-    outpath_final = os.path.normpath(outpath_final) + os.sep
+    inpath_final = os.path.normpath(input_path+os.sep + product_tag + os.sep) + os.sep
+    outpath_final = os.path.normpath(output_path + os.sep + product_tag + os.sep) + os.sep
 
     # Empty list of data files used further for plotting
     with open(outpath_final + '/filelist.txt', 'w'): pass
 
-    start = datetime(start_year,start_month,1,0,0,0)
-    end = datetime(end_year,end_month,1,0,0,0)
-    series = pd.bdate_range(start, end, freq='D')
-    ''' one can select trends only for a particular season here; currently hard coded; can be given as arguments if wanted'''
-    indx_seasons = np.where(np.logical_or(np.logical_or(series.month==6,series.month==7), np.logical_or(series.month==7,series.month==8)))
     
     row_chunk_main = np.arange(xlim1, xlim2, nmaster)
     col_chunk_main = np.arange(ylim1, ylim2, nmaster)
-    '''currently tested to 500 X 500 size chunks, but can be changed to other master chunks 100, 200 etc., not less than 100 or in between two integrals '''
+    # currently tested to 500 X 500 size chunks, but can be changed to other master chunks 100, 200 etc., not less than 100 or in between two integrals
     chunks_row_final = np.append(row_chunk_main, [xlim2], axis=0)
     chunks_col_final = np.append(col_chunk_main, [ylim2], axis=0)
 
@@ -337,20 +277,20 @@ def main():
     main_block_iteration=0
     for iter_row in range(len(chunks_row_final[:]))[0:-1]:
        for iter_col in range(len(chunks_col_final[:]))[0:-1]:
-           print("LOOP:", iter_row,iter_col)
+           print("Chunk:", iter_row,iter_col)
            # Write time series of the data for each master iteration
-           in_file = inpath_final+'store_time_series_'+np.str(chunks_row_final[iter_row])+'_'+np.str(chunks_row_final[iter_row+1])+'_'+np.str(chunks_col_final[iter_col])+'_'+np.str(chunks_col_final[iter_col+1])+'.nc'
+           in_file = inpath_final+args.hash+'_timeseries_'+np.str(chunks_row_final[iter_row])+'_'+np.str(chunks_row_final[iter_row+1])+'_'+np.str(chunks_col_final[iter_col])+'_'+np.str(chunks_col_final[iter_col+1])+'.nc'
            # Calculate trend from the each time series of master chunks 
-           print('calculating trend for the chunk') 
-           print(chunks_row_final[iter_row],chunks_row_final[iter_row+1],chunks_col_final[iter_col],chunks_col_final[iter_col+1],'***Row_SIZE***',chunks_row_final[iter_row+1]-chunks_row_final[iter_row],'***Col_SIZE***',chunks_col_final[iter_col+1]-chunks_col_final[iter_col]) 
+           print('> calculating trend for the chunk:') 
            print(in_file)
+           print(chunks_row_final[iter_row],chunks_row_final[iter_row+1],chunks_col_final[iter_col],chunks_col_final[iter_col+1],'***Row_SIZE***',chunks_row_final[iter_row+1]-chunks_row_final[iter_row],'***Col_SIZE***',chunks_col_final[iter_col+1]-chunks_col_final[iter_col]) 
            X_shape, Y_shape=chunks_row_final[iter_row+1]-chunks_row_final[iter_row],chunks_col_final[iter_col+1]-chunks_col_final[iter_col]
            
            # Creation of sub chunks of 100 by 100 to estimate trends in Master 500 by 500
            # one can use 500 by 500 sub chunks to estimate trends if Master is by 1000 by 1000
-           mainchunks_x = np.arange(chunks_row_final[iter_row],chunks_row_final[iter_row+1],nchild)
+           mainchunks_x = np.arange(chunks_row_final[iter_row], chunks_row_final[iter_row+1], nchild)
            # one can use 500 instead of 100 sub chunks to estimate trends if Master is by 1000 by 1000
-           mainchunks_y = np.arange(chunks_col_final[iter_col],chunks_col_final[iter_col+1],nchild)
+           mainchunks_y = np.arange(chunks_col_final[iter_col], chunks_col_final[iter_col+1], nchild)
            # one can us e 500 instead of 100 sub chunks to estimate trends if Master is by 1000 by 1000
     
            step_chunk_x = chunks_row_final[iter_row+1]-chunks_row_final[iter_row]
@@ -370,8 +310,8 @@ def main():
     
            ''' Applying the multiple processing here, with process of choice, i use 4 for local and 16 for lustre '''
            ''' Here we pass the arguments to the initializer for pool so we use in the function used in multiple processing, it can be changed differently '''
-           nproc = 4
-           with Pool(processes=nproc, initializer=init_worker_nc, initargs=(var_dict,X_shape,Y_shape,step_chunk_x,step_chunk_y,final_chunk_x,final_chunk_y,start_chunk_x,start_chunk_y,in_file,outpath_final,iteration_final,indx_seasons[0])) as pool:
+           nproc = args.nproc
+           with Pool(processes=nproc, initializer=init_worker_nc, initargs=(var_dict,X_shape,Y_shape,step_chunk_x,step_chunk_y,final_chunk_x,final_chunk_y,start_chunk_x,start_chunk_y,in_file,outpath_final,iteration_final)) as pool:
                '''I am not returning results, usually you can return and write the results after multiprocessing '''
                print('pool started')
                results = pool.starmap(processInput_trends,[(result_chunks[i]) for i in range(len(result_chunks))])
@@ -382,7 +322,8 @@ def main():
            main_block_iteration+=1
 
 
-def compute_trends(sy, ey, sm, em, inp, outp, prod, x1, x2, y1, y2, nmaster):
+#def compute_trends(h, inp, outp, prod, x1, x2, y1, y2, nmaster):
+def compute_trends(*largs):
     # Lock is the module from multiprocessing to allow the write of netcdf files one at a time to avoid conflict, first invocation here in main
 
     global lock 
@@ -391,13 +332,24 @@ def compute_trends(sy, ey, sm, em, inp, outp, prod, x1, x2, y1, y2, nmaster):
     lock = Lock()
     var_dict = {}
 
-    command = ['--start_year', sy, '--end_year', ey, '--start_month', sm, '--end_month', em,
-               '--input', inp, '--output', outp, '--product_tag', prod,
-               '--xlim1', x1, '--xlim2', x2, '--ylim1', y1, '--ylim2', y2,
-               '--master_chunk', nmaster]
+    class ArgsTmp:
+        def __init__(self, h, inp, outp, prod, x1, x2, y1, y2, nmaster, np):
+            self.hash = h
+            self.input = inp
+            self.output = outp
+            self.product_tag = prod
+            self.xlim1 = x1
+            self.xlim2 = x2
+            self.ylim1 = y1
+            self.ylim2 = y2
+            self.master_chunk = nmaster
+            self.nproc = np
+
+
 
     global args 
-    args = parse_args(command)
+    #args = ArgsTmp(h, inp, outp, prod, x1, x2, y1, y2, nmaster, np)
+    args = ArgsTmp(*largs)
     main()
 
 

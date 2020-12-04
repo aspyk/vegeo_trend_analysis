@@ -113,9 +113,11 @@ def main():
     kwarg['start'] = args.start_date.isoformat()
     kwarg['end'] = args.end_date.isoformat()
     kwarg['limits'] = chunks.global_limits(fmt='str')
+    dic_hash = {}
     for p in args.product_tag:
         kwarg['product'] = p
-        print(p, generic.get_case_hash(**kwarg) )
+        dic_hash[p] =  generic.get_case_hash(**kwarg)
+        print(p, dic_hash[p] )
 
     ## Run the selected pipeline actions
    
@@ -144,6 +146,8 @@ def main():
 
         import estimate_trends_from_time_series
 
+        nproc = 1
+        
         if args.output==None:
             output_path = './output_tendencies/'
             input_path = './output_timeseries/'
@@ -154,7 +158,10 @@ def main():
             print('  Process {0}'.format(yellow(prod)))
             pathlib.Path(output_path+'/'+prod).mkdir(parents=True, exist_ok=True)
 
-            str_arg = [str(i) for i in [start_year, end_year, start_month, end_month, input_path, output_path, prod, *args.zone_coor, nmaster]]
+            phash = dic_hash[prod]
+
+            #str_arg = [str(i) for i in [phash, input_path, output_path, prod, *args.zone_coor, nmaster, nproc]]
+            str_arg = [phash, input_path, output_path, prod, *args.zone_coor, nmaster, nproc]
             estimate_trends_from_time_series.compute_trends(*str_arg)
 
     # MERGE
@@ -204,7 +211,7 @@ def main():
 
             for var in ['sn','zval','pval','len']:
                 list_arg = [input_path, output_path, merged_filename, *args.zone_coor,
-                            '{}:{} to {}'.format(hex_hash[:6], args.start_date.isoformat(), args.end_date.isoformat()), var, 365]
+                            '{}:{} to {}'.format(dic_hash[prod], args.start_date.isoformat(), args.end_date.isoformat()), var, 365]
                 trend_file_merger.plot_trends(*list_arg)
 
 
