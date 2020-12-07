@@ -23,8 +23,7 @@ import psutil
 
 
     
-def init_worker_nc(var_dict, X_shape, Y_shape, step_chunk_x, step_chunk_y, final_chunk_x, final_chunk_y,
-                   start_chunk_x, start_chunk_y, file_timeseries, file_outpath, iteration_final):
+def init_worker_nc(var_dict, file_timeseries, file_outpath):
         '''
         Initialize the pool with boundaries of data to be read and write
         currently, the last version of the code uses only the input time series data
@@ -32,102 +31,54 @@ def init_worker_nc(var_dict, X_shape, Y_shape, step_chunk_x, step_chunk_y, final
         '''
         
         # Using a dictionary to initialize all the boundaries of the grid
-        var_dict['X_shape'] = X_shape
-        var_dict['Y_shape'] = Y_shape
-        var_dict['step_chunk_x'] = step_chunk_x
-        var_dict['step_chunk_y'] = step_chunk_y
-        var_dict['final_chunk_x'] = final_chunk_x
-        var_dict['final_chunk_y'] = final_chunk_y
-        var_dict['start_chunk_x'] = start_chunk_x
-        var_dict['start_chunk_y'] = start_chunk_y
         var_dict['file_input_time_series'] = file_timeseries
         var_dict['file_output_tendencies'] = file_outpath
-        var_dict['iteration_last_check'] = iteration_final
     
  
-def processInput_trends(tuple_limits1 ,tuple_limits2, parent_iteration, child_iteration, nchild):
-    '''This is the main file that calculate trends '''
+def processInput_trends(subchunk, parent_iteration, child_iteration):
+    """This is the main file that calculate trends"""
 
+    ## Debug tool to print process Ids
     process = psutil.Process(os.getpid())
     current = current_process()
     #print(current._identity, f'{process.memory_info().rss/1024/1024} Mo')
 
-    # Reading the input time series file from main chunk, configured length of time series X 500 X 500; it varies if different chunks are used
+    # Read the input time series file from main chunk, configured length of time X 500 X 500; it may vary if different chunks are used
     hdf_ts = Dataset(var_dict['file_input_time_series'], 'r', format='NETCDF4')
 
-    # the tuple limits are between 0 and 3700 for LSA SAF products. if it reaches the limit, it is used for 12 additional pixels to complete size 3712
-    # tuple_limits2 and tuple_limits1 correspond to first indices of the bounding box in the iteration
-    # currently nchild or child chunks are set to 100 X 100 only, irrespective of master size; eg., 500 X 500 box contain 25 100 X 100 child chunks
-    
-    iter_subchunk_x = tuple_limits1 - var_dict['start_chunk_x']
-    iter_subchunk_y = tuple_limits2 - var_dict['start_chunk_y']
-
-    if tuple_limits1==3700:
-        step_chunk1 = 12
-    elif iter_subchunk_x+nchild > hdf_ts.variables['time_series_chunk'].shape[1]:
-        step_chunk1 = hdf_ts.variables['time_series_chunk'].shape[1] - iter_subchunk_x
-    else:
-        step_chunk1 = nchild
-
-    if tuple_limits2==3700: 
-        step_chunk2 = 12
-    elif iter_subchunk_y+nchild > hdf_ts.variables['time_series_chunk'].shape[2]:
-        step_chunk2 = hdf_ts.variables['time_series_chunk'].shape[2] - iter_subchunk_y
-    else: 
-        step_chunk2 = nchild
-  
-
     # Create temporary storage with size of sub chunks in main chunk, currently configured 100 by 100 blocks
-    var_temp_output = np.empty([step_chunk1,step_chunk2,4])    
-    var_temp_output[:] = np.NaN
+    var_temp_output = np.empty([*subchunk.dim,4])    
+    var_temp_output[:] = np.nan
     # NaN matrix by default
-    print ('>>> Block started:   ROW: [{}:{}] COL: [{}:{}]'.format(tuple_limits1, tuple_limits1+step_chunk1, tuple_limits2, tuple_limits2+step_chunk2))
+    print ('### Chunk {} > subchunk {} started: COL: [{}:{}] ROW: [{}:{}]'.format(parent_iteration, child_iteration, *subchunk.get_limits('local', 'str')))
 
     
-    ## DEBUG
-    #print("hdf_ts.variables['time_series_chunk'].shape:", hdf_ts.variables['time_series_chunk'].shape)
-    #print('iter_subchunk_x:',iter_subchunk_x, 'step_chunk1:', step_chunk1)
-    #print('iter_subchunk_y:',iter_subchunk_y, 'step_chunk2:', step_chunk2)
-
-    # Reduce loop indices to fit the shape of data shape is no nchild multiple
-    #if iter_subchunk_x+step_chunk1>hdf_ts.variables['time_series_chunk'].shape[1]:
-    #   bnd_end_x = hdf_ts.variables['time_series_chunk'].shape[1]
-    #else:
-    #   bnd_end_x = iter_subchunk_x+step_chunk1
-    #
-    #if iter_subchunk_y+step_chunk2>hdf_ts.variables['time_series_chunk'].shape[2]:
-    #   bnd_end_y = hdf_ts.variables['time_series_chunk'].shape[2]
-    #else:
-    #   bnd_end_y = iter_subchunk_y+step_chunk2
-
-    sub_chunks_x = np.arange(iter_subchunk_x, iter_subchunk_x+step_chunk1, 1)
-    sub_chunks_y = np.arange(iter_subchunk_y, iter_subchunk_y+step_chunk2, 1)
-    #sub_chunks_x = np.arange(iter_subchunk_x, bnd_end_x, 1)
-    #sub_chunks_y = np.arange(iter_subchunk_y, bnd_end_y, 1)
-
-
     b_deb = 0 # flag to print time profiling
     t00 = timer()
     t000 = timer()
     t_mean = 0.
     #print(current._identity, f'{process.memory_info().rss/1024/1024} Mo')
-    for ii_sub in range(len(sub_chunks_x)):
+    #for ii_sub in range(*subchunk.get_limits('local', 'tuple')[:2]):
+    offsetx = subchunk.get_limits('local', 'tuple')[0]
+    offsety = subchunk.get_limits('local', 'tuple')[2]
+
+    for jj_sub in range(subchunk.dim[0]):
         # dimension of variable: time,x,y
         # preload all the y data here to avoid overhead due to calling Dataset.variables at each iteration in the inner loop
-        data_test0 = hdf_ts.variables['time_series_chunk'][:,sub_chunks_x[ii_sub],:]
+        data_test0 = hdf_ts.variables['time_series_chunk'][:,jj_sub+offsety,:]
         #data_test0 = hdf_ts.variables['time_series_chunk'][:500,sub_chunks_x[ii_sub],:]
         #print(f'ii_sub:{ii_sub} ({sub_chunks_x[0]},{sub_chunks_x[-1]})', f'len(sub_chunks_y):{len(sub_chunks_y)} ({sub_chunks_y[0]},{sub_chunks_y[-1]})')
         # debug
         #print(np.count_nonzero(np.isnan(data_test0)))
 
-        for jj_sub in range(len(sub_chunks_y)):
+        for ii_sub in range(subchunk.dim[1]):
             if b_deb: print('---------------')
             if b_deb: print(f'{ii_sub} ({sub_chunks_x[0]},{sub_chunks_x[-1]})', f'{jj_sub} ({sub_chunks_y[0]},{sub_chunks_y[-1]})')
             
             t0 = timer()
 
-            data_test = data_test0[:,sub_chunks_y[jj_sub]]
-
+            data_test = data_test0[:,ii_sub+offsetx]
+    
 
             #data_test=hdf_ts.variables['time_series_chunk'][:,sub_chunks_x[ii_sub],sub_chunks_y[jj_sub]]
             slope=999.0
@@ -185,11 +136,11 @@ def processInput_trends(tuple_limits1 ,tuple_limits2, parent_iteration, child_it
 
             if b_deb: print('p,z,slope,nx', p,z,slope,nx)
 
-            var_temp_output[ii_sub,jj_sub,0] = p
-            var_temp_output[ii_sub,jj_sub,1] = z
-            #var_temp_output[ii_sub,jj_sub,2] = slope
-            var_temp_output[ii_sub,jj_sub,2] = Sn
-            var_temp_output[ii_sub,jj_sub,3] = nx
+            var_temp_output[jj_sub,ii_sub,0] = p
+            var_temp_output[jj_sub,ii_sub,1] = z
+            #var_temp_output[jj_sub,ii_sub,2] = slope
+            var_temp_output[jj_sub,ii_sub,2] = Sn
+            var_temp_output[jj_sub,ii_sub,3] = nx
 
         if 0:
             t_mean += timer()-t00
@@ -202,34 +153,33 @@ def processInput_trends(tuple_limits1 ,tuple_limits2, parent_iteration, child_it
             t00 = timer()
     
     #print(f't000tot.p{current._identity[0]} {timer()-t000:.3f}s {process.memory_info().rss/1024/1024:.2f}Mo')
-    print ('<<< Block completed: ROW: [{}:{}] COL: [{}:{}]'.format(tuple_limits1, tuple_limits1+step_chunk1, tuple_limits2, tuple_limits2+step_chunk2))
-    write_string0 = ("ITERATION_MASTER_" + np.str(parent_iteration)  
-                     + "_ITERATION_CHILD_" + np.str(child_iteration)  
-                     + "_ROW_" + np.str(tuple_limits1) + '_' + np.str(tuple_limits1+step_chunk1) 
-                     + "_COL_" + np.str(tuple_limits2) + '_' + np.str(tuple_limits2+step_chunk2) 
-                     + '_.nc')
+    #print ('<<< Block completed: ROW: [{}:{}] COL: [{}:{}]'.format(tuple_limits1, tuple_limits1+step_chunk1, tuple_limits2, tuple_limits2+step_chunk2))
+    write_string0 = (param.hash+"_CHUNK_" + np.str(parent_iteration)  
+                     + "_SUBCHUNK_" + np.str(child_iteration)   
+                     + "_" + '_'.join(subchunk.get_limits('global', 'str'))
+                     + '.nc')
     write_string = var_dict['file_output_tendencies'] + '/' + write_string0
     write_string = os.path.normpath(write_string)
-    '''var_dict['file_output_tendencies'] prepared from the initializer routes the tendencies files to output destination as defined by product_tag previously '''
+    # var_dict['file_output_tendencies'] prepared from the initializer routes the tendencies files to output destination as defined by product_tag previously
 
     if lock.acquire():
         #print ('Pool process Thread Locked:')
         #print ('Pool process Writing NetCDF:')
-        nc_output = Dataset(write_string,'w')
-        xdim = nc_output.createDimension('X_dim',step_chunk1)
-        ydim = nc_output.createDimension('Y_dim',step_chunk2)
-        Vardim = nc_output.createDimension('Var',4)
+        nc_output = Dataset(write_string, 'w')
+        xdim = nc_output.createDimension('X_dim', subchunk.dim[1])
+        ydim = nc_output.createDimension('Y_dim', subchunk.dim[0])
+        Vardim = nc_output.createDimension('Var', 4)
         
                      
-        output_data = nc_output.createVariable('chunk_scores_p_val',np.float64,('X_dim','Y_dim'),zlib=True,least_significant_digit=3)
-        output_data = nc_output.createVariable('chunk_scores_z_val',np.float64,('X_dim','Y_dim'),zlib=True,least_significant_digit=3)
-        output_data = nc_output.createVariable('chunk_scores_Sn_val',np.float64,('X_dim','Y_dim'),zlib=True,least_significant_digit=8)
-        output_data = nc_output.createVariable('chunk_scores_length',np.float64,('X_dim','Y_dim'),zlib=True,least_significant_digit=3)
+        output_data = nc_output.createVariable('chunk_scores_p_val',  np.float64, ('Y_dim','X_dim'), zlib=True, least_significant_digit=3)
+        output_data = nc_output.createVariable('chunk_scores_z_val',  np.float64, ('Y_dim','X_dim'), zlib=True, least_significant_digit=3)
+        output_data = nc_output.createVariable('chunk_scores_Sn_val', np.float64, ('Y_dim','X_dim'), zlib=True, least_significant_digit=8)
+        output_data = nc_output.createVariable('chunk_scores_length', np.float64, ('Y_dim','X_dim'), zlib=True, least_significant_digit=3)
         
-        nc_output.variables['chunk_scores_p_val'][:]=var_temp_output[:,:,0]
-        nc_output.variables['chunk_scores_z_val'][:]=var_temp_output[:,:,1]
-        nc_output.variables['chunk_scores_Sn_val'][:]=var_temp_output[:,:,2]
-        nc_output.variables['chunk_scores_length'][:]=var_temp_output[:,:,3]
+        nc_output.variables['chunk_scores_p_val'][:] = var_temp_output[:,:,0]
+        nc_output.variables['chunk_scores_z_val'][:] = var_temp_output[:,:,1]
+        nc_output.variables['chunk_scores_Sn_val'][:] = var_temp_output[:,:,2]
+        nc_output.variables['chunk_scores_length'][:] = var_temp_output[:,:,3]
         
         nc_output.close() 
         lock.release()
@@ -238,6 +188,8 @@ def processInput_trends(tuple_limits1 ,tuple_limits2, parent_iteration, child_it
    
         hdf_ts.close() 
     
+        print ('Subchunk {} completed, save to {}'.format(child_iteration, write_string0))
+        
         with open(os.path.normpath(var_dict['file_output_tendencies'] + '/filelist.txt'),'a') as fl:
             fl.write(write_string0+'\n')
         
@@ -247,17 +199,11 @@ def processInput_trends(tuple_limits1 ,tuple_limits2, parent_iteration, child_it
 
 def main():
 
-    input_path = args.input
+    input_path = param.input
 
-    output_path = args.output
+    output_path = param.output
     
-    product_tag = args.product_tag
-    
-    xlim1 = int(args.xlim1)
-    xlim2 = int(args.xlim2)
-    ylim1 = int(args.ylim1)
-    ylim2 = int(args.ylim2)
-    nmaster = int(args.master_chunk)
+    product_tag = param.product_tag
     
     inpath_final = os.path.normpath(input_path+os.sep + product_tag + os.sep) + os.sep
     outpath_final = os.path.normpath(output_path + os.sep + product_tag + os.sep) + os.sep
@@ -266,63 +212,37 @@ def main():
     with open(outpath_final + '/filelist.txt', 'w'): pass
 
     
-    row_chunk_main = np.arange(xlim1, xlim2, nmaster)
-    col_chunk_main = np.arange(ylim1, ylim2, nmaster)
-    # currently tested to 500 X 500 size chunks, but can be changed to other master chunks 100, 200 etc., not less than 100 or in between two integrals
-    chunks_row_final = np.append(row_chunk_main, [xlim2], axis=0)
-    chunks_col_final = np.append(col_chunk_main, [ylim2], axis=0)
+    nchild = 100
+    main_block_iteration = 0
+    for chunk in param.chunks.list:
+        #print("Chunk:", iter_row,iter_col)
+        # Calculate trend from the each time series of master chunks 
+        in_file = inpath_final+param.hash+'_timeseries_'+ '_'.join(chunk.get_limits('global','str'))+'.nc'
+        print('> calculating trend for the chunk:') 
+        print(in_file)
+        print('***Row/y_SIZE***', chunk.dim[0], '***Col/x_SIZE***', chunk.dim[1]) 
+        
+         
+        chunk.subdivide(nchild)
+        #for sub in chunk.list:
+        #    print(sub.dim)
 
-    #nchild=int(nmaster/5)
-    nchild=100
-    main_block_iteration=0
-    for iter_row in range(len(chunks_row_final[:]))[0:-1]:
-       for iter_col in range(len(chunks_col_final[:]))[0:-1]:
-           print("Chunk:", iter_row,iter_col)
-           # Write time series of the data for each master iteration
-           in_file = inpath_final+args.hash+'_timeseries_'+np.str(chunks_row_final[iter_row])+'_'+np.str(chunks_row_final[iter_row+1])+'_'+np.str(chunks_col_final[iter_col])+'_'+np.str(chunks_col_final[iter_col+1])+'.nc'
-           # Calculate trend from the each time series of master chunks 
-           print('> calculating trend for the chunk:') 
-           print(in_file)
-           print(chunks_row_final[iter_row],chunks_row_final[iter_row+1],chunks_col_final[iter_col],chunks_col_final[iter_col+1],'***Row_SIZE***',chunks_row_final[iter_row+1]-chunks_row_final[iter_row],'***Col_SIZE***',chunks_col_final[iter_col+1]-chunks_col_final[iter_col]) 
-           X_shape, Y_shape=chunks_row_final[iter_row+1]-chunks_row_final[iter_row],chunks_col_final[iter_col+1]-chunks_col_final[iter_col]
-           
-           # Creation of sub chunks of 100 by 100 to estimate trends in Master 500 by 500
-           # one can use 500 by 500 sub chunks to estimate trends if Master is by 1000 by 1000
-           mainchunks_x = np.arange(chunks_row_final[iter_row], chunks_row_final[iter_row+1], nchild)
-           # one can use 500 instead of 100 sub chunks to estimate trends if Master is by 1000 by 1000
-           mainchunks_y = np.arange(chunks_col_final[iter_col], chunks_col_final[iter_col+1], nchild)
-           # one can us e 500 instead of 100 sub chunks to estimate trends if Master is by 1000 by 1000
+        result_chunks = [(sub, main_block_iteration, i) for i,sub in enumerate(chunk.list)]
     
-           step_chunk_x = chunks_row_final[iter_row+1]-chunks_row_final[iter_row]
-           step_chunk_y = chunks_col_final[iter_col+1]-chunks_col_final[iter_col]
-           
-           final_chunk_x = chunks_row_final[iter_row+1]
-           final_chunk_y = chunks_col_final[iter_col+1]
-           
-           start_chunk_x = chunks_row_final[iter_row]
-           start_chunk_y = chunks_col_final[iter_col]
-          
-           inputdata = [mainchunks_x,mainchunks_y]
-           result_main_chunks = list(itertools.product(*inputdata))
-           result_chunks = [(result_main_chunks[i][0],result_main_chunks[i][1],main_block_iteration,i, nchild) for i in range(len(result_main_chunks))]
-           #print (result_chunks)
-           iteration_final = len(result_chunks)-1
-    
-           ''' Applying the multiple processing here, with process of choice, i use 4 for local and 16 for lustre '''
-           ''' Here we pass the arguments to the initializer for pool so we use in the function used in multiple processing, it can be changed differently '''
-           nproc = args.nproc
-           with Pool(processes=nproc, initializer=init_worker_nc, initargs=(var_dict,X_shape,Y_shape,step_chunk_x,step_chunk_y,final_chunk_x,final_chunk_y,start_chunk_x,start_chunk_y,in_file,outpath_final,iteration_final)) as pool:
-               '''I am not returning results, usually you can return and write the results after multiprocessing '''
-               print('pool started')
-               results = pool.starmap(processInput_trends,[(result_chunks[i]) for i in range(len(result_chunks))])
-               pool.close()
-               pool.join()
-               print('pool cleaned')
-           '''iterate the main block iteration'''
-           main_block_iteration+=1
+        # Applying the multiple processing here, with process of choice, i use 4 for local and 16 for lustre 
+        # Here we pass the arguments to the initializer for pool so we use in the function used in multiple processing, it can be changed differently 
+        with Pool(processes=param.nproc, initializer=init_worker_nc, initargs=(var_dict, in_file, outpath_final)) as pool:
+            # I am not returning results, usually you can return and write the results after multiprocessing
+            print('pool started')
+            results = pool.starmap(processInput_trends, [(i) for i in result_chunks])
+            pool.close()
+            pool.join()
+            print('pool cleaned')
+
+        # increase the main block iteration
+        main_block_iteration += 1
 
 
-#def compute_trends(h, inp, outp, prod, x1, x2, y1, y2, nmaster):
 def compute_trends(*largs):
     # Lock is the module from multiprocessing to allow the write of netcdf files one at a time to avoid conflict, first invocation here in main
 
@@ -333,23 +253,18 @@ def compute_trends(*largs):
     var_dict = {}
 
     class ArgsTmp:
-        def __init__(self, h, inp, outp, prod, x1, x2, y1, y2, nmaster, np):
+        def __init__(self, h, inp, outp, prod, chunks, np):
             self.hash = h
             self.input = inp
             self.output = outp
             self.product_tag = prod
-            self.xlim1 = x1
-            self.xlim2 = x2
-            self.ylim1 = y1
-            self.ylim2 = y2
-            self.master_chunk = nmaster
             self.nproc = np
+            self.chunks = chunks
 
 
 
-    global args 
-    #args = ArgsTmp(h, inp, outp, prod, x1, x2, y1, y2, nmaster, np)
-    args = ArgsTmp(*largs)
+    global param 
+    param = ArgsTmp(*largs)
     main()
 
 
@@ -359,7 +274,7 @@ if __name__ == "__main__":
         # Lock is the module from multiprocessing to allow the write of netcdf files one at a time to avoid conflict, first invocation here in main
         lock = Lock()
         var_dict = {}
-        args = parse_args()
+        param = parse_args()
         main()
     
     except Exception:
