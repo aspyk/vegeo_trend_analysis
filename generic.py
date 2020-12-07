@@ -1,10 +1,14 @@
 import numpy as np
 import hashlib
+from collections import namedtuple
 
 
 class Splitter():
-    """
+    """ 
     Class to handle the partitioning of the selected region into chunks.
+
+    Columns use x index
+    Rows use y index
 
     Args:
         xlim1,xlim2,ylim1,ylim2: global region coordinates on MSG disk.
@@ -12,7 +16,7 @@ class Splitter():
     """
     
     class Chunk():
-        def __init__(self, parent, row0, row1, col0, col1):
+        def __init__(self, parent, col0, col1, row0, row1):
             """
             global_lim/slice are in the MSG disk reference
             local_lim/slice are in the extracted region reference
@@ -24,23 +28,46 @@ class Splitter():
             self.c1 = col1
 
             # (xdim, ydim)
-            self.dim = (self.r1-self.r0, self.c1-self.c0)
+            self.dim = (self.c1-self.c0, self.r1-self.r0)
 
-            self.global_lim = (self.r0, self.r1, self.c0, self.c1)
+            self.global_lim = (self.c0, self.c1, self.r0, self.r1)
             # swap to fit numpy array indexing: array[y1:y2,x1:x2]
             self.global_slice = (slice(*self.global_lim[2:]), slice(*self.global_lim[:2]))
     
-            self.local_lim = (self.r0-self.parent.x1, self.r1-self.parent.x1, self.c0-self.parent.y1, self.c1-self.parent.y1)
+            self.local_lim = (self.c0-self.parent.x1, self.c1-self.parent.x1, self.r0-self.parent.y1, self.r1-self.parent.y1)
             # swap to fit numpy array indexing: array[y1:y2,x1:x2]
             self.local_slice = (slice(*self.local_lim[2:]), slice(*self.local_lim[:2]))
 
-        def get_lim(ref, fmt):
+        def get_lim(self, ref, fmt):
             """
-            ref: 'loc' or 'glob'
-            fmt: 'tuple' or 'slice'
+            ref: 'local' or 'global'
+            fmt: 'tuple' or 'slice' or 'str'
             Not sure if needed yet..
             """
-            pass
+            if ref=='global':
+                if fmt=='tuple':
+                    return self.global_lim
+                elif fmt=='slice':
+                    # swap to fit numpy array indexing: array[y1:y2,x1:x2]
+                    return (slice(*self.global_lim[2:]), slice(*self.global_lim[:2]))
+                elif fmt=='str':
+                    return tuple(str(i) for i in self.global_lim)
+        
+        def subdivide(self, subsize):
+            """
+            Divide the chunk into subchunk of size subsize
+            Indices are in local coordinate (ie start at 0)
+            """
+            
+            self.chunk_col = list(range(0, self.dim[0], subsize))+[self.dim[0]]
+            self.chunk_row = list(range(0, self.dim[1], subsize))+[self.dim[1]]
+   
+            self.list = []
+            for row0,row1 in self.parent.grouper(self.chunk_row):
+                for col0,col1 in self.parent.grouper(self.chunk_col):
+                    self.list.append(self.__class__(self, col0,col1,row0,row1))
+ 
+
 
 
     def __init__(self, xlim1, xlim2, ylim1, ylim2, nmaster=500):
@@ -51,13 +78,13 @@ class Splitter():
         self.nmaster = nmaster
 
         ## the master_chunk or nmaster slices the region and can be a number, 100, 200, 500 etc., currently tested for 500 X 500 '''
-        self.chunks_row = list(range(xlim1, xlim2, nmaster))+[xlim2]
-        self.chunks_col = list(range(ylim1, ylim2, nmaster))+[ylim2]
+        self.chunks_col = list(range(xlim1, xlim2, nmaster))+[xlim2]
+        self.chunks_row = list(range(ylim1, ylim2, nmaster))+[ylim2]
    
         self.list = []
-        for col0,col1 in self.grouper(self.chunks_col):
-            for row0,row1 in self.grouper(self.chunks_row):
-                self.list.append(self.Chunk(self, row0,row1,col0,col1))
+        for row0,row1 in self.grouper(self.chunks_row):
+            for col0,col1 in self.grouper(self.chunks_col):
+                self.list.append(self.Chunk(self, col0,col1,row0,row1))
     
     def global_limits(self, fmt=None):
         """
@@ -85,6 +112,95 @@ class Splitter():
         """
         for i in range(len(input_list) - (n - 1)):
             yield input_list[i:i+n]
+
+
+class Splitter2():
+    """
+    Class to perform recursive partitioning of the selected region into chunks.
+
+    Columns use x index
+    Rows use y index
+
+    Args:
+        xlim1,xlim2,ylim1,ylim2: global region coordinates on MSG disk.
+        parent: use only internally
+    """
+
+    def __init__(self, xlim1, xlim2, ylim1, ylim2, parent=None):
+        self.x1 = xlim1
+        self.x2 = xlim2
+        self.y1 = ylim1
+        self.y2 = ylim2
+
+        if parent is None:
+            self.parent = self
+        else:
+            self.parent = parent
+
+        # swap to fit numpy array indexing: array[y,x]
+        self.dim = (self.y2-self.y1, self.x2-self.x1)
+
+
+    def get_limits(self, ref, fmt):
+        """
+        Return the global limits with the specified format
+
+        Args:
+            ref: 'global' or 'local'
+
+            fmt:  - 'tuple' : return tuple
+                  - 'str'   : return a string
+                  - 'slice' : return slice object
+        """
+        
+        if ref=='global':
+            refx = 0
+            refy = 0
+        elif ref=='local':
+            refx = self.parent.x1
+            refy = self.parent.y1
+
+        x1 = self.x1-refx
+        x2 = self.x2-refx
+        y1 = self.y1-refy
+        y2 = self.y2-refy
+
+        if fmt=='tuple':
+            return (x1, x2, y1, y2)
+        elif fmt=='str':
+            # Use (x,y) order to print
+            return tuple([str(i) for i in [x1, x2, y1, y2]])
+        elif fmt=='slice':
+            # swap to fit numpy array indexing: array[y1:y2,x1:x2]
+            return (slice(y1, y2), slice(x1, x2))
+
+
+    def grouper(self, input_list, n=2):
+        """
+        Generate tuple of n consecutive items from input_list
+        ex for n=2: [a,b,c,d] -> [[a,b],[b,c],[c,d]]
+        """
+        for i in range(len(input_list) - (n - 1)):
+            yield input_list[i:i+n]
+ 
+
+    def subdivide(self, subsize):
+        """
+        Divide the chunk into subchunk of size subsize
+        Indices are in local coordinate (ie start at 0)
+        """
+       
+        self.chunk_col = self.x1+np.array(list(range(0, self.dim[1], subsize))+[self.dim[1]])
+        self.chunk_row = self.y1+np.array(list(range(0, self.dim[0], subsize))+[self.dim[0]])
+   
+        self.list = []
+        for row0,row1 in self.parent.grouper(self.chunk_row):
+            for col0,col1 in self.parent.grouper(self.chunk_col):
+                # self.__class__ is used to instantiate recursively a new class
+                #print(col0, col1, row0, row1) 
+                self.list.append(self.__class__(col0, col1, row0, row1, self)) 
+ 
+
 
 
 def plot2Darray(v, var='var'):
