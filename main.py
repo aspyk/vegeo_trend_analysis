@@ -100,11 +100,12 @@ def main():
     nmaster = args.master_chunk
    
     # Generate chunks with splitter object
-    chunks = generic.Splitter(*args.zone_coor, nmaster)
+    chunks = generic.Splitter2(*args.zone_coor)
+    chunks.subdivide(nmaster)
 
     # print info
     print("Run {4} of {0} in {1} from {2} to {3}".format(green(','.join(args.product_tag)),
-                                                         green(chunks.global_limits(fmt='str')),
+                                                         green(','.join(chunks.get_limits('global', 'str'))),
                                                          green(args.start_date.isoformat()),
                                                          green(args.end_date.isoformat()), 
                                                          green(','.join(args.action))) )
@@ -112,7 +113,7 @@ def main():
     kwarg = {}
     kwarg['start'] = args.start_date.isoformat()
     kwarg['end'] = args.end_date.isoformat()
-    kwarg['limits'] = chunks.global_limits(fmt='str')
+    kwarg['limits'] = ','.join(chunks.get_limits('global', 'str'))
     dic_hash = {}
     for p in args.product_tag:
         kwarg['product'] = p
@@ -161,8 +162,8 @@ def main():
             phash = dic_hash[prod]
 
             #str_arg = [str(i) for i in [phash, input_path, output_path, prod, *args.zone_coor, nmaster, nproc]]
-            str_arg = [phash, input_path, output_path, prod, *args.zone_coor, nmaster, nproc]
-            estimate_trends_from_time_series.compute_trends(*str_arg)
+            t_args = [phash, input_path, output_path, prod, chunks, nproc]
+            estimate_trends_from_time_series.compute_trends(*t_args)
 
     # MERGE
     #------------------------------------------------#
@@ -181,7 +182,9 @@ def main():
 
             merged_filename = 'merged_trends.nc'
 
-            list_arg = [input_path, merged_filename, *args.zone_coor, nmaster]
+            phash = dic_hash[prod]
+
+            list_arg = [input_path, merged_filename, chunks]
             trend_file_merger.merge_trends(*list_arg)
 
     # PLOT

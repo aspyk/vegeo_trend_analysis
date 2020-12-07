@@ -23,7 +23,7 @@ def pprinttable(rows, header, fmt):
     for row in rows:
         print(row_format.format(*row))
 
-def merge_trends(input_path, file_trend_name, xlim1, xlim2, ylim1, ylim2, nmaster):
+def merge_trends(input_path, file_trend_name, chunks):
 
     cdpzn = input_path
     
@@ -35,39 +35,26 @@ def merge_trends(input_path, file_trend_name, xlim1, xlim2, ylim1, ylim2, nmaste
     
     print('load0')
 
-    output_data = nc_output.createVariable('chunk_scores_p_val',np.float,('X_dim','Y_dim'),zlib=True,least_significant_digit=3)
-    output_data = nc_output.createVariable('chunk_scores_z_val',np.float,('X_dim','Y_dim'),zlib=True,least_significant_digit=3)
-    output_data = nc_output.createVariable('chunk_scores_Sn_val',np.float,('X_dim','Y_dim'),zlib=True,least_significant_digit=9)
-    output_data = nc_output.createVariable('chunk_scores_length',np.float,('X_dim','Y_dim'),zlib=True,least_significant_digit=3)
+    output_data = nc_output.createVariable('chunk_scores_p_val',  np.float, ('Y_dim','X_dim'), zlib=True, least_significant_digit=3)
+    output_data = nc_output.createVariable('chunk_scores_z_val',  np.float, ('Y_dim','X_dim'), zlib=True, least_significant_digit=3)
+    output_data = nc_output.createVariable('chunk_scores_Sn_val', np.float, ('Y_dim','X_dim'), zlib=True, least_significant_digit=9)
+    output_data = nc_output.createVariable('chunk_scores_length', np.float, ('Y_dim','X_dim'), zlib=True, least_significant_digit=3)
     
     temp_store_trend = np.empty([3712,3712,4])
     temp_store_trend[:] = np.NaN
     
-    print('load1')
-
     tile_map_glob = np.full((3712,3712), np.nan)
-    tile_map_loc = np.full((xlim2-xlim1,ylim2-ylim1), np.nan)
+    tile_map_loc = np.full(chunks.dim, np.nan)
 
-    
-    row_chunk_main = np.arange(xlim1, xlim2, nmaster)
-    col_chunk_main = np.arange(ylim1, ylim2, nmaster)
-    '''we can use 1000 or less file size 500, but need to change the dependencies in code as described by the comments '''
-    chunks_row_final = np.append(row_chunk_main, [xlim2], axis=0)
-    chunks_col_final = np.append(col_chunk_main, [ylim2], axis=0)    
-
-    nchild = 100
-    chunks_main = np.arange(chunks_row_final[0], chunks_row_final[-1], nchild)
-    chunks_final = np.append(chunks_main, [xlim2], axis=0)
-       
-    print('load2')
-    
     fp = open(input_path+'/'+'filelist.txt')
     
     filenames = fp.readlines()
-    for i in range(len(chunks_final)-1):
-        print ('**row', chunks_final[i], 'to', chunks_final[i+1])
+    #for i in range(len(chunks_final)-1):
+    if 1:
+        #print ('**row', chunks_final[i], 'to', chunks_final[i+1])
             
-        matching_master = [s for s in filenames if 'ROW_'+np.str(chunks_final[i])+'_'+ np.str(chunks_final[i+1]) in s]
+        matching_master = [s for s in filenames]
+
         
         for j in range(len(matching_master)):
             child_file = matching_master[j][0:-1]
@@ -75,16 +62,17 @@ def merge_trends(input_path, file_trend_name, xlim1, xlim2, ylim1, ylim2, nmaste
             print(cdpzn+'/'+child_file)
             
             data = re.findall(r"[-+]?\d*\.\d+|\d+", child_file)
+            data = data[-4:]
    
-            MASTER_indx = int(data[0])
-            CHILD_indx = int(data[1])
+            COL1 = int(data[0])
+            COL2 = int(data[1])
     
             ROW1 = int(data[2])
             ROW2 = int(data[3])
     
-            COL1 = int(data[4])
-            COL2 = int(data[5])
-    
+
+            print(ROW1, ROW2, COL1, COL2)
+
             child_nc = Dataset(cdpzn+'/'+child_file, 'r')
     
             data_child_z = child_nc.variables['chunk_scores_z_val'][:].astype('f')
@@ -107,10 +95,12 @@ def merge_trends(input_path, file_trend_name, xlim1, xlim2, ylim1, ylim2, nmaste
             tmp[:,[0,-1]] = 1.0 # add border of the tile
             tmp[[0,-1],:] = 1.0 # idem
             tile_map_glob[ROW1:ROW2,COL1:COL2] = tmp
-            tile_map_loc[ROW1-xlim1:ROW2-xlim1,COL1-ylim1:COL2-ylim1] = tmp
+            offsetx = chunks.get_limits('global', 'tuple')[0]
+            offsety = chunks.get_limits('global', 'tuple')[2]
+            tile_map_loc[ROW1-offsety:ROW2-offsety,COL1-offsetx:COL2-offsetx] = tmp
 
         # DEBUG
-        var = temp_store_trend[xlim1:xlim2,ylim1:ylim2,:]
+        var = temp_store_trend[chunks.get_limits('global', 'slice')]
         size = var.shape[0]*var.shape[1]
         header = ['var', 'valid[%]', 'min', 'max']
         fmt = ['s','.1f','.3f','.3f']
@@ -188,13 +178,13 @@ def plot_trends(input_path, output_path, file_trend_name, xlim1, xlim2, ylim1, y
 
     if plot_choice=='sn':
         trends[plot_choice][view_zenith>75] = np.NaN
-        dx = xr.DataArray(trends[plot_choice][xlim1:xlim2,ylim1:ylim2]*scale_tendency, dims = ('y','x'))
+        dx = xr.DataArray(trends[plot_choice][ylim1:ylim2,xlim1:xlim2]*scale_tendency, dims = ('y','x'))
         '''The value of scale tendency depends on the product, daily or high frequency, for daily, the value is 365 '''
     else:
-        dx = xr.DataArray(trends[plot_choice][xlim1:xlim2,ylim1:ylim2], dims = ('y','x'))
+        dx = xr.DataArray(trends[plot_choice][ylim1:ylim2,xlim1:xlim2], dims = ('y','x'))
     
-    dx.coords['lat'] = (('y', 'x'), lat_MSG[xlim1:xlim2,ylim1:ylim2])
-    dx.coords['lon'] = (('y', 'x'), lon_MSG[xlim1:xlim2,ylim1:ylim2])
+    dx.coords['lat'] = (('y', 'x'), lat_MSG[ylim1:ylim2,xlim1:xlim2])
+    dx.coords['lon'] = (('y', 'x'), lon_MSG[ylim1:ylim2,xlim1:xlim2])
 
     cm = 'jet'
     #cm = 'nipy_spectral'
