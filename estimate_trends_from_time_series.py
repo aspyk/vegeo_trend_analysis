@@ -199,9 +199,16 @@ def processInput_trends(tuple_limits1 ,tuple_limits2, parent_iteration, child_it
             '''we put 999 for missing values so as to validate with fortran code; man-kendall scores are estimated by a fortran file
             already imported'''
             if 1:
-                ## orinal mann-kendall test :
-                p,z,Sn,nx = m.mk_trend(len(data_test), np.arange(len(data_test)), data_test)
-                # if data_test = [], the test return (p,z,Sn,nx) = (1.0, 0.0, 0.5, 0.0)
+                valid = data_test[data_test!=999]
+                if valid.size>0:
+                    if valid.mean()==0.0:
+                        p,z,Sn,nx = [0,0,0,0] 
+                    else:
+                        ## orinal mann-kendall test :
+                        p,z,Sn,nx = m.mk_trend(len(data_test), np.arange(len(data_test)), data_test)
+                        # if data_test = [], the test return (p,z,Sn,nx) = (1.0, 0.0, 0.5, 0.0)
+                else:
+                    p,z,Sn,nx = m.mk_trend(len(data_test), np.arange(len(data_test)), data_test)
             else:
                 ## other test
                 p,z,Sn,nx = [0,0,0,0] 
