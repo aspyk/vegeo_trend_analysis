@@ -12,6 +12,7 @@ import re
 import h5py
 import matplotlib.pyplot as plt
 import os,sys
+import fnmatch
 
 def pprinttable(rows, header, fmt):
     w = 9
@@ -23,12 +24,10 @@ def pprinttable(rows, header, fmt):
     for row in rows:
         print(row_format.format(*row))
 
-def merge_trends(input_path, file_trend_name, chunks):
+def merge_trends(input_path, file_trend_name, chunks, phash):
 
-    cdpzn = input_path
-    
     print('*** MERGE TRENDS')
-    nc_output = Dataset(cdpzn+'/'+file_trend_name,'w')
+    nc_output = Dataset(input_path+'/'+file_trend_name,'w')
     xdim = nc_output.createDimension('X_dim',3712)
     ydim = nc_output.createDimension('Y_dim',3712)
     Vardim = nc_output.createDimension('Var',4)
@@ -46,58 +45,53 @@ def merge_trends(input_path, file_trend_name, chunks):
     tile_map_glob = np.full((3712,3712), np.nan)
     tile_map_loc = np.full(chunks.dim, np.nan)
 
-    fp = open(input_path+'/'+'filelist.txt')
-    
-    filenames = fp.readlines()
-    #for i in range(len(chunks_final)-1):
-    if 1:
-        #print ('**row', chunks_final[i], 'to', chunks_final[i+1])
+    ## Filter the trend files with the case hash
+    flist = os.listdir(input_path) 
+    filenames = fnmatch.filter(flist, '{}_*'.format(phash))
             
-        matching_master = [s for s in filenames]
+    for child_file in filenames:
 
+        #child_file = matching_master[j][0:-1]
         
-        for j in range(len(matching_master)):
-            child_file = matching_master[j][0:-1]
-            
-            print(cdpzn+'/'+child_file)
-            
-            data = re.findall(r"[-+]?\d*\.\d+|\d+", child_file)
-            data = data[-4:]
+        print(input_path+'/'+child_file)
+        
+        data = re.findall(r"[-+]?\d*\.\d+|\d+", child_file)
+        data = data[-4:]
    
-            COL1 = int(data[0])
-            COL2 = int(data[1])
+        COL1 = int(data[0])
+        COL2 = int(data[1])
     
-            ROW1 = int(data[2])
-            ROW2 = int(data[3])
+        ROW1 = int(data[2])
+        ROW2 = int(data[3])
     
 
-            print(ROW1, ROW2, COL1, COL2)
+        print(ROW1, ROW2, COL1, COL2)
 
-            child_nc = Dataset(cdpzn+'/'+child_file, 'r')
+        child_nc = Dataset(input_path+'/'+child_file, 'r')
     
-            data_child_z = child_nc.variables['chunk_scores_z_val'][:].astype('f')
-            data_child_p = child_nc.variables['chunk_scores_p_val'][:].astype('f')
-            data_child_length = child_nc.variables['chunk_scores_length'][:].astype('f')
-            data_child_sn = child_nc.variables['chunk_scores_Sn_val'][:].astype('f')
+        data_child_z = child_nc.variables['chunk_scores_z_val'][:].astype('f')
+        data_child_p = child_nc.variables['chunk_scores_p_val'][:].astype('f')
+        data_child_length = child_nc.variables['chunk_scores_length'][:].astype('f')
+        data_child_sn = child_nc.variables['chunk_scores_Sn_val'][:].astype('f')
     
-            child_nc.close()
-            
-            
-            temp_store_trend[ROW1:ROW2,COL1:COL2,0] = data_child_p
-            temp_store_trend[ROW1:ROW2,COL1:COL2,1] = data_child_z
-            temp_store_trend[ROW1:ROW2,COL1:COL2,2] = data_child_sn
-            temp_store_trend[ROW1:ROW2,COL1:COL2,3] = data_child_length
+        child_nc.close()
+        
+        
+        temp_store_trend[ROW1:ROW2,COL1:COL2,0] = data_child_p
+        temp_store_trend[ROW1:ROW2,COL1:COL2,1] = data_child_z
+        temp_store_trend[ROW1:ROW2,COL1:COL2,2] = data_child_sn
+        temp_store_trend[ROW1:ROW2,COL1:COL2,3] = data_child_length
 
-            ## Fill a tile map to debug
-            tmp = 0.5*np.ones((ROW2-ROW1,COL2-COL1))
-            tmp[:,:] = data_child_length
-            tmp = np.where(tmp==0.0, 0.0, 0.5) # create a mask for valid data (~land)
-            tmp[:,[0,-1]] = 1.0 # add border of the tile
-            tmp[[0,-1],:] = 1.0 # idem
-            tile_map_glob[ROW1:ROW2,COL1:COL2] = tmp
-            offsetx = chunks.get_limits('global', 'tuple')[0]
-            offsety = chunks.get_limits('global', 'tuple')[2]
-            tile_map_loc[ROW1-offsety:ROW2-offsety,COL1-offsetx:COL2-offsetx] = tmp
+        ## Fill a tile map to debug
+        tmp = 0.5*np.ones((ROW2-ROW1,COL2-COL1))
+        tmp[:,:] = data_child_length
+        tmp = np.where(tmp==0.0, 0.0, 0.5) # create a mask for valid data (~land)
+        tmp[:,[0,-1]] = 1.0 # add border of the tile
+        tmp[[0,-1],:] = 1.0 # idem
+        tile_map_glob[ROW1:ROW2,COL1:COL2] = tmp
+        offsetx = chunks.get_limits('global', 'tuple')[0]
+        offsety = chunks.get_limits('global', 'tuple')[2]
+        tile_map_loc[ROW1-offsety:ROW2-offsety,COL1-offsetx:COL2-offsetx] = tmp
 
         # DEBUG
         var = temp_store_trend[chunks.get_limits('global', 'slice')]
