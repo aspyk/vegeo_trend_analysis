@@ -45,6 +45,8 @@ def parse_args():
                         help='size of master chunks',
                         default=500,
                         type=int)
+    parser.add_argument('-d','--delete_cache', help='Delete cache by overwritting it.', action='store_true')
+    parser.add_argument('-np','--nproc', help='number of process to run the trend analysis', default=1, type=int)
     
     args = parser.parse_args()
     return args
@@ -147,8 +149,6 @@ def main():
 
         import estimate_trends_from_time_series
 
-        nproc = 1
-        
         if args.output==None:
             output_path = './output_tendencies/'
             input_path = './output_timeseries/'
@@ -162,7 +162,7 @@ def main():
             phash = dic_hash[prod]
 
             #str_arg = [str(i) for i in [phash, input_path, output_path, prod, *args.zone_coor, nmaster, nproc]]
-            t_args = [phash, input_path, output_path, prod, chunks, nproc]
+            t_args = [phash, input_path, output_path, prod, chunks, args.nproc, args.delete_cache]
             estimate_trends_from_time_series.compute_trends(*t_args)
 
     # MERGE
@@ -184,7 +184,7 @@ def main():
 
             phash = dic_hash[prod]
 
-            list_arg = [input_path, merged_filename, chunks]
+            list_arg = [input_path, merged_filename, chunks, phash]
             trend_file_merger.merge_trends(*list_arg)
 
     # PLOT
