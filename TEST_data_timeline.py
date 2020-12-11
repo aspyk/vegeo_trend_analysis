@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
-#import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
 import pathlib
 import subprocess
 from string import Template
@@ -14,10 +15,12 @@ import fnmatch
 
 
 class Timeline():
-    def __init__(self):
-        self.path_template = "/cnrm/vegeo/SAT/DATA/MSG_LST_CDR_OR_MISSING_15min/HDF5_LSASAF_MSG_LST_MSG-Disk_$Y$m$d$H$M"
-        #self.path_template = "/cnrm/vegeo/SAT/DATA/MSG_LST_CDR_OR_NRT_15min/HDF5_LSASAF_MSG_LST_MSG-Disk_$Y$m$d$H$M"
-        self.path_template = pathlib.Path(self.path_template)
+    """
+    TODO: merge continuous interval between end of the month and the start of the following
+    """
+
+    def __init__(self, path_template, freq):
+        self.path_template = pathlib.Path(path_template)
         print(self.path_template.parts)
        
         ## Split fixed and changing part
@@ -35,7 +38,7 @@ class Timeline():
         self.changing_path = Template(str(self.changing_path))
     
 
-        self.freq = '15T'
+        self.freq = freq
 
     def _find_date(self, dic_date):
         """
@@ -60,14 +63,20 @@ class Timeline():
             yield input_list[i:i+n]
 
 
-    def get_initial_date(self):
-        
+    def get_continuous_intervals(self):
+        """
+        Scan the provided directory to create a list of continuous intervals based on selected frequency:
+        [ [t0,t1] , [t2,t3] , ... ]
+        ti being datetime objects.
+        """
+       
+        ## date template
         dic_date = {'Y':'????', 'm':'??', 'd':'??', 'H':'??', 'M':'??'}
         
         init_year = 2000
-        valid_year = {}
+        self.valid_year = {}
 
-        ## timing for 337055 files to list:
+        ## INFO: timing for 337055 files to list:
         # from timeit import default_timer as timer
         # t0 = timer()
         # out = list(self.fixed_path.glob(self.changing_path.substitute(**dic_date)))
@@ -83,74 +92,114 @@ class Timeline():
         ## > 5x faster with fnmatch
 
         
-        flist = os.listdir(self.fixed_path)
 
-        ## Iterate over years
+        ## First select available (valid) years
+        ## Use os.listdir() and fnmatch.filter() to perform quick selection
+        flist = os.listdir(self.fixed_path)
         for y in range(init_year, 2021):
             dic_date['Y'] = y
             #print('sub:', self.changing_path.substitute(**dic_date))
             out = fnmatch.filter(flist, self.changing_path.substitute(**dic_date))
-
             if len(out) > 0:
-                valid_year[y] = []
+                self.valid_year[y] = []
+        print("valid year:", self.valid_year.keys())
 
-        print("valid year:", valid_year.keys())
 
-
-        ## Iterate over months of valid years
+        ## Then iterate over months of valid years
         t0 = timer()
-        for y in valid_year.keys():
+        for y in self.valid_year.keys():
             dic_date['Y'] = y
             for m in range(1,13):
                 dic_date['m'] = str(m).zfill(2)
                 #print('sub:', self.changing_path.substitute(**dic_date))
                 out = fnmatch.filter(flist, self.changing_path.substitute(**dic_date))
+                # if there is data in the month
                 if len(out)>0:
                     
                     t00 = timer()
                     
                     ## Get available file by month 
                     out = fnmatch.filter(flist, self.changing_path.substitute(**dic_date))
+                    # convert string template to date formater
                     ref = self.changing_path.template.replace('$','%')
+                    ref = ref.replace('{','')
+                    ref = ref.replace('}','')
                     avail_date = np.array(sorted([datetime.datetime.strptime(f, ref) for f in out]))
                    
                     ## Get all theoretical dates, actually not useful here
-                    ## Note the use of MonthEnd to offset of one (or more)  month precisely
+                    ## INFO: Note the use of MonthEnd to offset of one (or more)  month precisely
                     #start = datetime.datetime(y, m, 1)
                     #all_date = pd.date_range(start, start+pd.tseries.offsets.MonthEnd(1), freq=self.freq)
 
                     print(y, m, len(avail_date))
 
-                    valid_intervals = []
+                    ## Recorf all valid intervalls as [start_dat, end_date] of continuous range according to self.freq
                     inter = [avail_date[0]]
                     for d1,d2 in self.grouper(avail_date):
+                        # check if there is more than one self.freq between two following date
                         if d2-d1!=pd.to_timedelta(self.freq):
                             inter.append(d1)
-                            valid_intervals.append(inter)
+                            self.valid_year[y].append(inter)
                             inter = [d2]
                     inter.append(avail_date[-1])
-                    valid_intervals.append(inter)
+                    self.valid_year[y].append(inter)
 
 
-                    for i in valid_intervals:
-                        print(i)
+                    #for i in valid_intervals:
+                    #    print(i)
 
 
                     print(timer()-t00)
 
-
         print(timer()-t0)
                     
-                
+    def plot_intervals(self):                
+        """Generate and save plot of valid interval"""
+        
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        
+        # You can then convert these datetime.datetime objects to the correct
+        # format for matplotlib to work with.
 
+        #xlims = [mdates.date2num(datetime.datetime(2004,1,1,0,0,0)), mdates.date2num(datetime.datetime(2004,12,31,23,59,59))]
+        # plot 
+        #ax.imshow(res_h.T, aspect='auto', origin='lower', extent=(xlims[0], xlims[1], dmin, dmax))
+        for y,inter in self.valid_year.items():
+            xnum = [[mdates.date2num(j)-mdates.datestr2num('{}-01-01 00:00'.format(y)) for j in i] for i in inter]
+            for x in xnum:
+                ax.plot(x,[y,y], lw=10)
+        
+        ax.grid()
+
+        ax.set_xlim(0,367)
+
+        plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%m'))
+        plt.gca().xaxis.set_major_locator(mdates.MonthLocator())
+        #plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
+        #plt.gca().xaxis.set_major_locator(mdates.YearLocator())
+        plt.gcf().autofmt_xdate()
+
+        ax.set_xlabel('date')
+        ax.set_ylabel('product')
+        plt.savefig('res_timeline.png')
+        
             
 
-    def read_time_series(self):
-        pass
 
 if __name__=="__main__":
 
-    timeline = Timeline()
-    timeline.get_initial_date()
-    #timeline.read_time_series()
+    param = {}
+
+    #param['path_template'] = "/cnrm/vegeo/SAT/DATA/MSG_LST_CDR_OR_MISSING_15min/HDF5_LSASAF_MSG_LST_MSG-Disk_$Y$m$d$H$M"
+    param['path_template'] = "/cnrm/vegeo/SAT/DATA/MSG_LST_CDR_OR_NRT_15min/HDF5_LSASAF_MSG_LST_MSG-Disk_$Y$m$d$H$M"
+    param['freq'] = '15T'
+    
+    param['path_template'] = '/cnrm/vegeo/SAT/DATA/MSG_LAI_DAILY_CDR/HDF5_LSASAF_MSG_LAI_MSG-Disk_$Y$m${d}0000'
+    param['freq'] = '1D'
+    
+
+    timeline = Timeline(**param)
+    timeline.get_continuous_intervals()
+    timeline.plot_intervals()
 
