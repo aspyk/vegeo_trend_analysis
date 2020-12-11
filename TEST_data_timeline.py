@@ -2,6 +2,8 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
+from matplotlib.ticker import NullFormatter
+from matplotlib.collections import PolyCollection
 import pathlib
 import subprocess
 from string import Template
@@ -11,6 +13,7 @@ import glob
 import os,sys
 import datetime
 import fnmatch
+import itertools
 
 
 
@@ -19,7 +22,7 @@ class Timeline():
     TODO: merge continuous interval between end of the month and the start of the following
     """
 
-    def __init__(self, path_template, freq):
+    def __init__(self, prod, path_template, freq):
         self.path_template = pathlib.Path(path_template)
         print(self.path_template.parts)
        
@@ -33,12 +36,20 @@ class Timeline():
                 self.changing_path.append(p)
         self.fixed_path = pathlib.Path(*self.fixed_path)
         self.changing_path = pathlib.Path(*self.changing_path)
+        self.file_template = self.changing_path.name
         print('fixed:', self.fixed_path)
         print('changed:', self.changing_path)
+        print('file:', self.file_template)
         self.changing_path = Template(str(self.changing_path))
+        self.file_template = Template(str(self.file_template))
     
-
         self.freq = freq
+        self.prod = prod
+
+        self.init_year = 2000
+        self.last_year = 2020
+        #self.init_year = 2016
+        #self.last_year = 2017
 
     def _find_date(self, dic_date):
         """
@@ -73,7 +84,6 @@ class Timeline():
         ## date template
         dic_date = {'Y':'????', 'm':'??', 'd':'??', 'H':'??', 'M':'??'}
         
-        init_year = 2000
         self.valid_year = {}
 
         ## INFO: timing for 337055 files to list:
@@ -91,19 +101,23 @@ class Timeline():
         # 337055 0.328439112752676
         ## > 5x faster with fnmatch
 
-        
 
         ## First select available (valid) years
         ## Use os.listdir() and fnmatch.filter() to perform quick selection
-        flist = os.listdir(self.fixed_path)
-        for y in range(init_year, 2021):
+        t0 = timer()
+        #flist = os.listdir(self.fixed_path)
+        flist = [ f for dp, dn, fn in os.walk(self.fixed_path) for f in fn]
+        print(timer()-t0)
+        #return
+        for y in range(self.init_year, self.last_year+1):
             dic_date['Y'] = y
-            #print('sub:', self.changing_path.substitute(**dic_date))
-            out = fnmatch.filter(flist, self.changing_path.substitute(**dic_date))
+            #print(y, 'sub:', self.file_template.substitute(**dic_date))
+            out = fnmatch.filter(flist, self.file_template.substitute(**dic_date))
             if len(out) > 0:
                 self.valid_year[y] = []
         print("valid year:", self.valid_year.keys())
 
+        #return
 
         ## Then iterate over months of valid years
         t0 = timer()
@@ -112,26 +126,35 @@ class Timeline():
             for m in range(1,13):
                 dic_date['m'] = str(m).zfill(2)
                 #print('sub:', self.changing_path.substitute(**dic_date))
-                out = fnmatch.filter(flist, self.changing_path.substitute(**dic_date))
+                out = fnmatch.filter(flist, self.file_template.substitute(**dic_date))
+                out = [i for i in out if not i.endswith('.bz2')]
                 # if there is data in the month
                 if len(out)>0:
                     
                     t00 = timer()
                     
                     ## Get available file by month 
-                    out = fnmatch.filter(flist, self.changing_path.substitute(**dic_date))
-                    # convert string template to date formater
-                    ref = self.changing_path.template.replace('$','%')
+                    #convert string template to date formater
+                    ref = self.file_template.template.replace('$','%')
                     ref = ref.replace('{','')
                     ref = ref.replace('}','')
+                    # hack to add custom parsing in strptime
+                    # https://stackoverflow.com/a/54451291/1840524
+                    import _strptime
+                    TimeRE = _strptime.TimeRE()
+                    TimeRE.update({'x': '(.h5)?'}) # match 0 or 1 '.h5' pattern
+                    _strptime._TimeRE_cache = TimeRE
+                    ref = ref.replace('*','%x')
+                    # process input list
+                    # remove bz2 files
                     avail_date = np.array(sorted([datetime.datetime.strptime(f, ref) for f in out]))
                    
-                    ## Get all theoretical dates, actually not useful here
-                    ## INFO: Note the use of MonthEnd to offset of one (or more)  month precisely
+                    ## INFO: Get all theoretical dates, actually not useful here
+                    ## Note the use of MonthEnd to offset of one (or more)  month precisely
                     #start = datetime.datetime(y, m, 1)
                     #all_date = pd.date_range(start, start+pd.tseries.offsets.MonthEnd(1), freq=self.freq)
 
-                    print(y, m, len(avail_date))
+                    print(y, m, len(out), '>', len(avail_date))
 
                     ## Recorf all valid intervalls as [start_dat, end_date] of continuous range according to self.freq
                     inter = [avail_date[0]]
@@ -145,61 +168,135 @@ class Timeline():
                     self.valid_year[y].append(inter)
 
 
-                    #for i in valid_intervals:
-                    #    print(i)
 
-
-                    print(timer()-t00)
+                    #print(timer()-t00)
 
         print(timer()-t0)
-                    
+
+        self.show_tot_time()
+
+        ## Merge continuous intervals when changing month.
+        for y,inter in self.valid_year.items():
+            merged = []
+            merged.append(inter[0])
+            for i1,i2 in self.grouper(inter):
+                if i2[0]-i1[1]==pd.to_timedelta(self.freq):
+                    merged[-1][-1] = i2[1] # [d1,d2],[d3,d4] -> [d1,d4]
+                else:
+                    merged.append(i2)
+            self.valid_year[y] = merged
+
+
+        self.show_tot_time()
+ 
+
+    def show_tot_time(self):
+        """get total time / year"""
+        dic_time = {}
+        for y,inter in self.valid_year.items():
+            dic_time[y] = []
+            for i in inter:
+                dic_time[y].append((i[1]-i[0]).total_seconds())
+
+        for y,inter in dic_time.items():
+            tmp = np.array(inter)
+            print('{} : inter nb {} : {} s : {:.3f} days'.format(y, tmp.size, tmp.sum(), tmp.sum()/86400))
+
+
     def plot_intervals(self):                
-        """Generate and save plot of valid interval"""
+        verts = []
+        colors = []
+        pool = itertools.cycle(plt.cm.Set1(np.linspace(0, 1, 9)))
+
+        for y,inter in self.valid_year.items():
+            offset = mdates.datestr2num('{}-01-01 00:00'.format(y))
+            for d in inter:
+                # Increase small interval to be visible on the plot
+                if d[1]-d[0] < datetime.timedelta(hours=12):
+                    d[1] += datetime.timedelta(hours=12)
+                v =  [(mdates.date2num(d[0])-offset, y-.4),
+                      (mdates.date2num(d[0])-offset, y+.4),
+                      (mdates.date2num(d[1])-offset, y+.4),
+                      (mdates.date2num(d[1])-offset, y-.4),
+                      (mdates.date2num(d[0])-offset, y-.4)]
+                verts.append(v)
+                colors.append(next(pool))
         
-        fig = plt.figure()
+        bars = PolyCollection(verts, facecolors=colors)
+        #bars = PolyCollection(verts)
+
+        fig = plt.figure(figsize=(20,8))
         ax = fig.add_subplot(111)
         
-        # You can then convert these datetime.datetime objects to the correct
-        # format for matplotlib to work with.
+        ax.add_collection(bars)
 
-        #xlims = [mdates.date2num(datetime.datetime(2004,1,1,0,0,0)), mdates.date2num(datetime.datetime(2004,12,31,23,59,59))]
-        # plot 
-        #ax.imshow(res_h.T, aspect='auto', origin='lower', extent=(xlims[0], xlims[1], dmin, dmax))
-        for y,inter in self.valid_year.items():
-            xnum = [[mdates.date2num(j)-mdates.datestr2num('{}-01-01 00:00'.format(y)) for j in i] for i in inter]
-            for x in xnum:
-                ax.plot(x,[y,y], lw=10)
-        
         ax.grid()
-
-        ax.set_xlim(0,367)
-
-        plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%m'))
-        plt.gca().xaxis.set_major_locator(mdates.MonthLocator())
-        #plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
-        #plt.gca().xaxis.set_major_locator(mdates.YearLocator())
-        plt.gcf().autofmt_xdate()
+        
+        # set dates limits
+        plt.axis('tight')
+        ax.set_xlim(0,366)
+        years = np.array(list(self.valid_year.keys()))
+        ax.set_ylim(years.min()-0.5, years.max()+0.5)
 
         ax.set_xlabel('date')
-        ax.set_ylabel('product')
-        plt.savefig('res_timeline.png')
+        ax.set_ylabel(self.prod)
         
+        #plt.gca().set_position([0, 0, 1, 1])
+
+        fout = 'res_timeline_{}.png'.format(self.prod)
+        plt.savefig(fout)
+        print("Image saved to:", fout)
+
+
+def get_param(prod):
+    param = {}
+    param['prod'] = prod
+
+    if prod=='lst_missing':
+        param['path_template'] = "/cnrm/vegeo/SAT/DATA/MSG_LST_CDR_OR_MISSING_15min/HDF5_LSASAF_MSG_LST_MSG-Disk_$Y$m$d$H$M"
+        param['freq'] = '15T'
+    
+    elif prod=='lst_nrt':
+        param['path_template'] = "/cnrm/vegeo/SAT/DATA/MSG_LST_CDR_OR_NRT_15min/HDF5_LSASAF_MSG_LST_MSG-Disk_$Y$m$d$H$M"
+        param['freq'] = '15T'
+    
+    elif prod=='lai':
+        param['path_template'] = '/cnrm/vegeo/SAT/DATA/MSG_LAI_DAILY_CDR/HDF5_LSASAF_MSG_LAI_MSG-Disk_${Y}${m}${d}0000'
+        param['freq'] = '1D'
+    
+    elif prod=='evapo':
+        param['path_template'] = '/cnrm/vegeo/SAT/DATA/LSA_SAF_METREF_CDR_DAILY/HDF5_LSASAF_MSG_METREF_MSG-Disk_$Y$m${d}0000'
+        param['freq'] = '1D'
+
+    elif prod=='al_icare':
+        # ICARE: 2005-01-01 -> 2016-09-18 (~2005-2016)
+        param['path_template'] = '/cnrm/vegeo/SAT/DATA/AERUS_GEO/Albedo_v104/${Y}/SEV_AERUS-ALBEDO-D3_${Y}-${m}-${d}_V1-04.h5'
+        param['freq'] = '1D'
             
+    elif prod=='al_mdal':
+        # MDAL: 2004-01-19 -> 2015-12-31 (~2004-2015)
+        param['path_template'] = '/cnrm/vegeo/SAT/DATA/MSG/Reprocessed-on-2017/MDAL/${Y}/${m}/${d}/HDF5_LSASAF_MSG_ALBEDO_MSG-Disk_${Y}${m}${d}0000'
+        param['freq'] = '1D'
+       
+    elif prod=='al_mdal_nrt':
+        # MDAL_NRT: 2015-11-11 -> today (~2016-today)
+        # 2019 -> 2020 : HDF5_xxx0000
+        # 2015 -> 2018 : HDF5_xxx0000.h5
+        param['path_template'] = '/cnrm/vegeo/SAT/DATA/MSG/NRT-Operational/AL2/AL2-${Y}${m}${d}/HDF5_LSASAF_MSG_ALBEDO_MSG-Disk_${Y}${m}${d}0000*'
+        param['freq'] = '1D'
+ 
+    return param
 
 
 if __name__=="__main__":
 
-    param = {}
+    plist = ['lst_nrt', 'lst_missing', 'lai', 'evapo', 'al_icare', 'al_mdal', 'al_mdal_nrt']
 
-    #param['path_template'] = "/cnrm/vegeo/SAT/DATA/MSG_LST_CDR_OR_MISSING_15min/HDF5_LSASAF_MSG_LST_MSG-Disk_$Y$m$d$H$M"
-    param['path_template'] = "/cnrm/vegeo/SAT/DATA/MSG_LST_CDR_OR_NRT_15min/HDF5_LSASAF_MSG_LST_MSG-Disk_$Y$m$d$H$M"
-    param['freq'] = '15T'
-    
-    param['path_template'] = '/cnrm/vegeo/SAT/DATA/MSG_LAI_DAILY_CDR/HDF5_LSASAF_MSG_LAI_MSG-Disk_$Y$m${d}0000'
-    param['freq'] = '1D'
-    
+    #for p in plist:
+    for p in [plist[-1]]:
+        param = get_param(p)
 
-    timeline = Timeline(**param)
-    timeline.get_continuous_intervals()
-    timeline.plot_intervals()
+        timeline = Timeline(**param)
+        timeline.get_continuous_intervals()
+        timeline.plot_intervals()
 
