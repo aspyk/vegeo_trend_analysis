@@ -4,6 +4,8 @@ output_*/
 tile_map*.png
 h52img*.png
 res*.png
+bla*.png
+*.out
 ###
 
 # Byte-compiled / optimized / DLL files
