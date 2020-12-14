@@ -46,7 +46,7 @@ class Timeline():
         self.freq = freq
         self.prod = prod
 
-        self.init_year = 2000
+        self.init_year = 2004
         self.last_year = 2020
         #self.init_year = 2016
         #self.last_year = 2017
@@ -235,11 +235,13 @@ class Timeline():
         # set dates limits
         plt.axis('tight')
         ax.set_xlim(0,366)
-        years = np.array(list(self.valid_year.keys()))
-        ax.set_ylim(years.min()-0.5, years.max()+0.5)
+        #years = np.array(list(self.valid_year.keys()))
+        #ax.set_ylim(years.min()-0.5, years.max()+0.5)
+        ax.set_ylim(self.init_year-0.5, self.last_year+0.5)
 
-        ax.set_xlabel('date')
-        ax.set_ylabel(self.prod)
+        ax.set_xlabel('day')
+        ax.set_ylabel('year')
+        ax.set_title(self.prod)
         
         #plt.gca().set_position([0, 0, 1, 1])
 
@@ -292,8 +294,8 @@ if __name__=="__main__":
 
     plist = ['lst_nrt', 'lst_missing', 'lai', 'evapo', 'al_icare', 'al_mdal', 'al_mdal_nrt']
 
-    #for p in plist:
-    for p in [plist[-1]]:
+    for p in plist:
+    #for p in [plist[-1]]:
         param = get_param(p)
 
         timeline = Timeline(**param)
