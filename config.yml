@@ -1,0 +1,51 @@
+---
+lst_missing:
+    root: "/cnrm/vegeo/SAT/DATA/MSG_LST_CDR_OR_MISSING_15min"
+    template: "HDF5_LSASAF_MSG_LST_MSG-Disk_%Y%m%d%H%M"
+    freq: '15T'
+    var: ''
+
+lst_nrt:
+    root: "/cnrm/vegeo/SAT/DATA/MSG_LST_CDR_OR_NRT_15min"
+    template: "HDF5_LSASAF_MSG_LST_MSG-Disk_%Y%m%d%H%M"
+    freq: '15T'
+
+lai:
+    root: '/cnrm/vegeo/SAT/DATA/MSG_LAI_DAILY_CDR'
+    template: 'HDF5_LSASAF_MSG_LAI_MSG-Disk_%Y%m%d0000'
+    freq: '1D'
+    var: 'LAI'
+
+evapo:
+    root: '/cnrm/vegeo/SAT/DATA/LSA_SAF_METREF_CDR_DAILY'
+    template: 'HDF5_LSASAF_MSG_METREF_MSG-Disk_%Y%m%d0000'
+    freq: '1D'
+    var: 'METREF'
+
+ # TODO
+fapar:
+    root: 'xxx'
+    template: 'xxx'
+    freq: '1D'
+
+ # ICARE: 2005-01-01 -> 2016-09-18 (~2005-2016)
+al_icare:
+    root: '/cnrm/vegeo/SAT/DATA/AERUS_GEO/Albedo_v104'
+    template: '%Y/SEV_AERUS-ALBEDO-D3_%Y-%m-%d_V1-04.h5'
+    freq: '1D'
+
+ # MDAL: 2004-01-19 -> 2015-12-31 (~2004-2015)
+al_mdal:
+    root: '/cnrm/vegeo/SAT/DATA/MSG/Reprocessed-on-2017/MDAL'
+    template: '%Y/%m/%d/HDF5_LSASAF_MSG_ALBEDO_MSG-Disk_%Y%m%d0000'
+    freq: '1D'
+    var: 'AL-BB-DH'
+
+ # MDAL_NRT: 2015-11-11 -> today (~2016-today)
+ # 2019 -> 2020 : HDF5_xxx0000
+ # 2015 -> 2018 : HDF5_xxx0000.h5
+al_mdal_nrt:
+    root: '/cnrm/vegeo/SAT/DATA/MSG/NRT-Operational/AL2'
+    template: 'AL2-%Y%m%d/HDF5_LSASAF_MSG_ALBEDO_MSG-Disk_%Y%m%d0000*'
+    freq: '1D'
+    var: 'AL-BB-DH'

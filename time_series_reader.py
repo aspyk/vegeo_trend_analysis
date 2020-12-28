@@ -36,131 +36,44 @@ import traceback
 from timeit import default_timer as timer
 import generic
 import pathlib
+import yaml
+from string import Template
 
 
 class TimeSeriesExtractor():
     def __init__(self, start, end, product, chunks, output_path='./output_timeseries/'):
-        self.dseries = pd.date_range(start, end, freq='D')
+        self.start = start
+        self.end = end
         self.product = product
         self.chunks = chunks
         self.output_path = output_path
         
         pathlib.Path(self.output_path+'/'+self.product).mkdir(parents=True, exist_ok=True)
         
+        # get product part in config.yml
+        with open("config.yml", 'r') as stream:
+            try:
+                yfile = yaml.safe_load(stream)
+            except yaml.YAMLError as exc:
+                print(exc)
+                sys.exit()
+        self.config = yfile[self.product]
+
+        self.dseries = pd.date_range(self.start, self.end, freq=self.config['freq'])
+        
         kwarg = {}
         kwarg['start'] = start.isoformat()
         kwarg['end'] = end.isoformat()
-        kwarg['limits'] = chunks.global_limits(fmt='str')
+        kwarg['limits'] = ','.join(chunks.get_limits('global', 'str'))
         kwarg['product'] = product
         self.hash = generic.get_case_hash(**kwarg)
 
     def get_lw_mask(self):
         """ Get the MSG disk land mask (0: see, 1: land, 2: outside space, 3: river/lake)"""
         hlw = h5py.File('./input_ancillary/HDF5_LSASAF_USGS-IGBP_LWMASK_MSG-Disk_201610171300','r')
-        self.lwmsk = hlw['LWMASK'][self.chunks.global_limits('slice')]
+        self.lwmsk = hlw['LWMASK'][self.chunks.get_limits('global', 'slice')]
         hlw.close()
     
-    def get_file_paths(self, key):
-        series = self.dseries
-
-        if self.product=='albedo':
-            if key=='icare':
-                # ICARE: 2005-01-01 -> 2016-09-18 (~2005-2016)
-                root_dssf = '/cnrm/vegeo/SAT/DATA/AERUS_GEO/Albedo_v104'
-                file_paths_root = [root_dssf+'/'+str('{:04}'.format(d.year))+'/' for d in series]
-                file_pattern = 'SEV_AERUS-ALBEDO-D3_{}_V1-04.h5'
-                file_paths_one = [file_pattern.format(d.strftime('%Y-%m-%d')) for d in series]     
-                file_paths_final = [file_paths_root[f]+file_paths_one[f] for f in range(len(file_paths_one))]
-        
-            elif key=='mdal':
-                # MDAL: 2004-01-19 -> 2015-12-31 (~2004-2015)
-                root_dssf = '/cnrm/vegeo/SAT/DATA/MSG/Reprocessed-on-2017/MDAL'
-                file_paths_root = [root_dssf+'/'+str('{:04}'.format(d.year))+'/'+str('{:02}'.format(d.month))+'/'+str('{:02}'.format(d.day))+'/' for d in series]
-                file_pattern = 'HDF5_LSASAF_MSG_ALBEDO_MSG-Disk_{}0000'
-                file_paths_one = [file_pattern.format(d.strftime('%Y%m%d')) for d in series]     
-                file_paths_final = [file_paths_root[f]+file_paths_one[f] for f in range(len(file_paths_one))]
-       
-            elif key=='mdal_nrt':
-                # MDAL_NRT: 2015-11-11 -> today (~2016-today)
-                root_dssf = '/cnrm/vegeo/SAT/DATA/MSG/NRT-Operational/AL2'
-                file_paths_root_one = root_dssf+'/'+'AL2-{}/'
-                #file_pattern = 'HDF5_LSASAF_MSG_ALBEDO_MSG-Disk_{}0000.h5' # 2015 -> 2018
-                file_pattern = 'HDF5_LSASAF_MSG_ALBEDO_MSG-Disk_{}0000' # 2019 -> 2020
-                file_paths_one = [file_paths_root_one.format(d.strftime('%Y%m%d')) for d in series]     
-                file_paths_two = [file_pattern.format(d.strftime('%Y%m%d')) for d in series]     
-                file_paths_final = [file_paths_one[f]+file_paths_two[f] for f in range(len(file_paths_one))]
-        
-        elif self.product=='lai':
-            if key=='mdal':
-                root_dir = '/cnrm/vegeo/SAT/DATA/MSG_LAI_DAILY_CDR/'
-                #file_pattern = 'HDF5_LSASAF_MSG_LAI-D10_MSG-Disk_{}0000'
-                file_pattern = 'HDF5_LSASAF_MSG_LAI_MSG-Disk_{}0000'
-                file_paths_one = [file_pattern.format(d.strftime('%Y%m%d')) for d in series]
-                file_paths_final = [root_dir+file_paths_one[f] for f in range(len(file_paths_one))]
-        
-        elif self.product=='lst':
-            #TODO
-            if key=='mdal':
-                pass
-        
-        elif self.product=='evapo':
-            if key=='mdal':
-                root_lst='/cnrm/vegeo/SAT/DATA/LSA_SAF_METREF_CDR_DAILY/'
-                file_pattern_one='HDF5_LSASAF_MSG_METREF_MSG-Disk_{}0000'
-                file_paths_one=[file_pattern_one.format(d.strftime('%Y%m%d')) for d in series]
-                file_paths_final=[root_lst+file_paths_one[f] for f in range(len(file_paths_one))]
-        
-        elif self.product=='fapar':
-            #TODO
-            if key=='mdal':
-                pass
-    
-        elif self.product=='dssf':
-            if key=='mdal_nrt':
-                root_dir='/cnrm/vegeo/SAT/DATA/MSG/NRT-Operational/DSSF/'
-                file_paths_root=[root_dir+'DSSF-'+str('{:04}'.format(d.year))+str('{:02}'.format(d.month))+str('{:02}'.format(d.day))+'/' for d in s]
-                file_pattern='HDF5_LSASAF_MSG_DSSF_MSG-Disk_{}.h5'
-                file_paths_one=[file_pattern.format(d.strftime('%Y%m%d%H%M')) for d in s]
-                file_paths_final=[file_paths_root[f]+file_paths_one[f] for f in range(len(file_paths_one))]
-    
-        return file_paths_final 
-
-    def get_product_files(self, key='default'):
-        self.product_files = {} 
-    
-        if self.product=='albedo':
-            if key=='default':
-                self.product_files['mdal'] = self.get_file_paths('mdal')
-                self.product_files['mdal_nrt'] = self.get_file_paths('mdal_nrt')
-    
-        if self.product=='lai':
-            if key=='default': 
-                self.product_files['mdal'] = self.get_file_paths('mdal')
-    
-        if self.product=='lst':
-            if key=='default': 
-                self.product_files['mdal'] = self.get_file_paths('mdal')
-    
-        if self.product=='evapo':
-            if key=='default': 
-                self.product_files['mdal'] = self.get_file_paths('mdal')
-    
-        if self.product=='fapar':
-            if key=='default': 
-                self.product_files['mdal'] = self.get_file_paths('mdal')
-    
-        if self.product=='dssf':
-            if key=='default': 
-                self.product_files['mdal_nrt'] = self.get_file_paths('mdal_nrt')
-
-    def extract_product(self, chunk, date, dateindex):
-        if self.product=='albedo':
-            result = self.extract_albedo(chunk, date, dateindex)
-        elif self.product=='lai':
-            result = self.extract_lai(chunk, date, dateindex)
-        elif self.product=='evapo':
-            result = self.extract_evapo(chunk, date, dateindex)
-        return result
 
     def extract_albedo(self, chunk, date, dateindex):
         files = {}
@@ -184,39 +97,26 @@ class TimeSeriesExtractor():
             print ('File not found, moving to next file, assigning NaN to extacted pixel.')
             return None
     
-        albedo = fh5['AL-BB-DH'][chunk.global_slice] # array of int
-        zage = fh5['Z_Age'][chunk.global_slice]
+        albedo = fh5['AL-BB-DH'][chunk.get_limits('global', 'slice')] # array of int
+        zage = fh5['Z_Age'][chunk.get_limits('global', 'slice')]
         fh5.close()
         
+        ## debug
+        if 1:
+            #probe = (slice(400, 420, 10), slice(1900, 1920, 10))
+            probe = (400, 1900)
+            albedo = fh5['AL-BB-DH'][probe] # array of int
+            zage = fh5['Z_Age'][probe]
+            qf = fh5['Q-flag'][probe]
+            return [albedo, zage, qf]
+
+
         ## remove invalid data
         albedo = np.where(albedo==-1, np.nan, albedo/10000.)            
         albedo = np.where(zage>0, np.nan, albedo)
         
         return albedo
    
-    def extract_lai(self, chunk, date, dateindex):
-        file_name = self.product_files['mdal'][dateindex]
-        
-        print(file_name)
-        
-        ## Extract data zone
-        try:
-            fh5 = h5py.File(file_name,'r')
-        except Exception:
-            traceback.print_exc()
-            print ('File not found, moving to next file, assigning NaN to extacted pixel.')
-            return None
-    
-        lai = fh5['LAI'][chunk.global_slice] # array of int
-        #zage = fh5['Z_Age'][*chunk.global_lim]
-        fh5.close()
-        
-        ## remove invalid data
-        lai = np.where(lai==-10, np.nan, lai/1000.)            
-        #albedo = np.where(zage>0, np.nan, albedo)
-        
-        return lai 
-
     def extract_evapo(self, chunk, date, dateindex):
         file_name = self.product_files['mdal'][dateindex]
         
@@ -231,7 +131,7 @@ class TimeSeriesExtractor():
             return None
 
 
-        var = fh5['METREF'][chunk.global_slice] # array of int
+        var = fh5['METREF'][chunk.get_limits('global', 'slice')] # array of int
         #zage = fh5['Z_Age'][*chunk.global_lim]
         fh5.close()
         
@@ -241,32 +141,9 @@ class TimeSeriesExtractor():
         
         return var
  
-    def extract_lst(self, chunk, date, dateindex):
-        file_name = self.product_files['mdal'][dateindex]
-        
-        print(file_name)
-        
-        ## Extract data zone
-        try:
-            fh5 = h5py.File(file_name,'r')
-        except Exception:
-            traceback.print_exc()
-            print ('File not found, moving to next file, assigning NaN to extacted pixel.')
-            return None
-    
-        var = fh5['LAI'][chunk.global_slice] # array of int
-        #zage = fh5['Z_Age'][*chunk.global_lim]
-        fh5.close()
-        
-        ## remove invalid data
-        var = np.where(var==-10, np.nan, var/1000.)            
-        #albedo = np.where(zage>0, np.nan, albedo)
-        
-        return var
-    
     def write_ts_chunk(self, chunk, tseries):
         """Write time series of the data for each master iteration"""
-        write_file = self.output_path+self.product+'/'+self.hash+'_timeseries_'+'_'.join([str(i) for i in chunk.global_lim])+'.nc'
+        write_file = self.output_path+self.product+'/'+self.hash+'_timeseries_'+'_'.join(chunk.get_limits('global', 'str'))+'.nc'
     
         nc_iter = Dataset(write_file, 'w', format='NETCDF4')
         
@@ -314,7 +191,7 @@ class TimeSeriesExtractor():
         ax.imshow(res_h.T, aspect='auto', origin='lower', extent=(xlims[0], xlims[1], dmin, dmax))
         
         # plot nan count
-        ax2.plot(xnum, pct_nan, c='k')
+        ax2.plot(xnum, pct_nan, c='k', lw=1)
 
         ax.grid()
 
@@ -326,40 +203,93 @@ class TimeSeriesExtractor():
         ax.set_ylabel(self.product)
         ax2.set_ylabel('% NaN')
         ax2.set_ylim(0,100)
-        plt.savefig('res_hist_{}.png'.format(self.product))
+        plt.savefig('res_hist_{}_{}.png'.format(self.hash, self.product))
             
+    def plot_image_series(self, tseries):
+        dmin, dmax = (np.nanmin(tseries), np.nanmax(tseries))
+        
+        out_path = './output_imageseries/'
+        pathlib.Path(out_path).mkdir(parents=True, exist_ok=True)
+        
+        ## Generate and save histogram
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        
+        init = dmin+np.zeros_like(tseries[0])
+        init[0,0] = dmax
+        img = ax.imshow(init, aspect='auto')
+        for i,cut in enumerate(tseries):
+            img.set_data(cut)
+            #plt.pause(0.1)
+            
+            ax.set_title('{} - {}'.format(self.product, self.dseries[i].isoformat()))
+            plt.savefig(out_path+'/res{1}_{0:03d}_{2}.png'.format(i, self.hash, self.product))
+ 
+    def get_product_files(self):
+        for date in self.dseries:
+            ## merge root dir with substituted template
+            file_name = pathlib.Path(self.config['root']) / pathlib.Path(date.strftime(self.config['template']))
+            print(file_name)
+            # Note: the with/yield pattern should be checked to see if files are corectly closed
+            try:
+                with h5py.File(file_name, 'r') as h5f:
+                    yield h5f
+            except Exception:
+                #traceback.print_exc()
+                print ('File not found, moving to next file, assigning NaN to extacted pixel.')
+                yield None
 
+    
+    def extract_product(self, h5f, chunk):
+        prod_chunk = h5f[self.config['var']][chunk.get_limits('global', 'slice')] # array of int
+        
+        ## remove invalid data
+        if self.product=='lai':
+            prod_chunk = np.where(prod_chunk==-10, np.nan, prod_chunk/1000.)            
+
+        return prod_chunk
+    
 
     def run(self):
         self.get_lw_mask()
-        self.get_product_files()
-        
+       
+        ## Loop on chunks
         for chunk in self.chunks.list:
             t0 = timer()
-            print('***', 'Row/Col_SIZE=({},{})'.format(*chunk.dim), 'GLOBAL_LOCATION=[{}:{},{}:{}]'.format(*chunk.global_lim))
+            print('***', 'SIZE (y,x)=(row,col)=({},{})'.format(*chunk.dim), 'GLOBAL_LOCATION=[{}:{},{}:{}]'.format(*chunk.get_limits('global', 'str')))
             ## Initialize an array series with nan
-            tseries = np.full([len(self.dseries), chunk.dim[1], chunk.dim[0]], np.nan)
+            tseries = np.full([len(self.dseries), *chunk.dim], np.nan)
             print(tseries.shape)
     
             ## Create the chunk mask
-            lwmsk_chunk = self.lwmsk[chunk.local_slice]
+            lwmsk_chunk = self.lwmsk[chunk.get_limits('local', 'slice')]
             ocean = np.where(lwmsk_chunk==0)
             land = np.where(lwmsk_chunk==1)
     
-    
-            for dateindex,date in enumerate(self.dseries):
-   
-                result = self.extract_product(chunk, date, dateindex)
-                  
-                if result is not None:
-                    tseries[dateindex,:] = result
-                else:
-                    continue
-    
+            res = [] # debug
+
+            ## Loop on files
+            if 1:
+                for h5index, h5file in enumerate(self.get_product_files()):
+                    if h5file is not None:
+                        print(h5index, 'OK')
+                        tseries[h5index,:] = self.extract_product(h5file, chunk)
+
+            # debug
+            if 0:
+                import matplotlib.pyplot as plt
+                res = np.array(res)
+                print(res.shape)
+                plt.plot(res)
+                plt.savefig('comp_age_qflag.png')
+                return
+
+
             print(timer()-t0)
     
             self.write_ts_chunk(chunk, tseries)
-            self.plot_histogram(tseries)
+            #self.plot_histogram(tseries)
+            #self.plot_image_series(tseries)
    
             del tseries       
     
