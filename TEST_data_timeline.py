@@ -14,6 +14,12 @@ import os,sys
 import datetime
 import fnmatch
 import itertools
+import traceback
+import h5py
+import logging
+logging.basicConfig(format='%(asctime)s %(message)s', level=logging.INFO)
+#logging.basicConfig(format='%(asctime)s %(message)s', level=logging.DEBUG)
+#logging.basicConfig(filename='example.log', encoding='utf-8', level=logging.DEBUG)
 
 
 
@@ -23,8 +29,9 @@ class Timeline():
     """
 
     def __init__(self, prod, path_template, freq):
+        logging.info('> {}'.format(prod))
         self.path_template = pathlib.Path(path_template)
-        print(self.path_template.parts)
+        logging.debug(self.path_template.parts)
        
         ## Split fixed and changing part
         self.fixed_path = []
@@ -35,11 +42,11 @@ class Timeline():
             else:
                 self.changing_path.append(p)
         self.fixed_path = pathlib.Path(*self.fixed_path)
-        self.changing_path = pathlib.Path(*self.changing_path)
-        self.file_template = self.changing_path.name
-        print('fixed:', self.fixed_path)
-        print('changed:', self.changing_path)
-        print('file:', self.file_template)
+        self.changing_path = pathlib.Path(*self.changing_path) # all changing parts of the path
+        self.file_template = self.changing_path.name # only the file name
+        logging.debug('fixed: {}'.format(self.fixed_path))
+        logging.debug('changed: {}'.format(self.changing_path))
+        logging.debug('file: {}'.format(self.file_template))
         self.changing_path = Template(str(self.changing_path))
         self.file_template = Template(str(self.file_template))
     
@@ -250,6 +257,56 @@ class Timeline():
         print("Image saved to:", fout)
 
 
+    def _string_template_to_date_formater(self):
+        ## Convert string template to date formater
+        #ref = self.file_template.template.replace('$','%')
+        ref = self.changing_path.template.replace('$','%')
+        ref = ref.replace('{','')
+        ref = ref.replace('}','')
+        if 0:
+            # hack to add custom parsing in strptime
+            # https://stackoverflow.com/a/54451291/1840524
+            import _strptime
+            TimeRE = _strptime.TimeRE()
+            TimeRE.update({'E': '(.h5)?'}) # match 0 or 1 '.h5' pattern
+            _strptime._TimeRE_cache = TimeRE
+            ref = ref.replace('*','%E')
+        return ref
+ 
+
+
+    def get_files_between_dates(self, d0, d1, subset=None):
+        """
+        Loop on date range an try to yield h5 file when it is found
+        """
+        ## Prepare the date range
+        series = pd.date_range(d0, d1, freq=self.freq)
+        if subset is not None:
+            if subset['type']=='time':
+                ## example: subset['type'] = 'time / subset['param'] = ['11:00','13:00']
+                series = series[series.indexer_between_time(*subset['param'])]
+        
+        ## Loop on date
+        for date in series:
+            logging.debug(date.strftime(self._string_template_to_date_formater()))
+            file_name = self.fixed_path / date.strftime(self._string_template_to_date_formater())
+            logging.debug(file_name)
+            if '*' in str(file_name):
+                # use glob to expand wildcard for the filename extension (.h5 or no)
+                file_name = glob.glob(str(file_name))[0] 
+                logging.debug(file_name)
+            try:
+                fh5 = h5py.File(file_name,'r')
+                logging.info('{}'.format(file_name))
+                yield fh5
+            except Exception:
+                ## debug:
+                #traceback.print_exc()
+                logging.warning('Unable to read the file, moving to next file, assigning NaN to pixels:')
+                logging.warning('{}'.format(file_name))
+                pass
+
+
 def get_param(prod):
     param = {}
     param['prod'] = prod
@@ -290,15 +347,92 @@ def get_param(prod):
     return param
 
 
+
+
+def test1(param):
+    """
+    Main test to find and plot all available data for a specific product
+    """
+    timeline = Timeline(**param)
+    timeline.get_continuous_intervals()
+    timeline.plot_intervals()
+
+def test2(param):
+    """
+    Test the use of optional subsetting function
+    """
+    timeline = Timeline(**param)
+    t0 = datetime.datetime(2018,10,1)
+    t1 = datetime.datetime(2018,10,10)
+    if 'lst' in timeline.prod:
+        # Subset the selection selecting only files between 11:00 and 13:00
+        subset = {'type':'time', 'param':['11:00', '13:00']}
+        for fic in timeline.get_files_between_dates(t0, t1, subset):
+            print(fic)
+    else:
+        for fic in timeline.get_files_between_dates(t0, t1):
+             print(fic)
+
+def test3():
+    """ 
+    Plot albedo, Z-age and q-flag on a time period (or load it from a npy cache file) to compare their evolution
+    """
+    try:
+        res = np.load('res.npy')
+    except:
+        timeline = Timeline(**get_param('al_mdal_nrt'))
+        t0 = datetime.datetime(2018,10,1)
+        t1 = datetime.datetime(2018,12,31)
+        
+        res = []
+        for fh5 in timeline.get_files_between_dates(t0, t1):
+            probe = (400, 1900)
+            albedo = fh5['AL-BB-DH'][probe]*0.0001 # array of int
+            zage = fh5['Z_Age'][probe]
+            qf = fh5['Q-Flag'][probe]
+            res.append([albedo, zage, qf])
+
+        res = np.array(res)
+        np.save('res.npy', res)
+        
+    fig = plt.figure()
+    ax = fig.add_subplot(311)
+    ax2 = fig.add_subplot(312)
+    ax3 = fig.add_subplot(313)
+    
+    ax.grid()
+   
+    ax.plot(res.T[0])
+    ax2.plot(res.T[1])
+    ax3.plot(res.T[2])
+
+    # set dates limits
+    plt.axis('tight')
+    #years = np.array(list(self.valid_year.keys()))
+    #ax.set_ylim(years.min()-0.5, years.max()+0.5)
+
+    #ax.set_xlabel('date')
+    #ax.set_ylabel('')
+    #ax.set_title(self.prod)
+    
+    fout = 'res_comp_zage_qflag.png'
+    plt.savefig(fout)
+    print("Image saved to:", fout)
+
+
+    
+
+   
+
 if __name__=="__main__":
 
     plist = ['lst_nrt', 'lst_missing', 'lai', 'evapo', 'al_icare', 'al_mdal', 'al_mdal_nrt']
 
     for p in plist:
-    #for p in [plist[-1]]:
         param = get_param(p)
 
-        timeline = Timeline(**param)
-        timeline.get_continuous_intervals()
-        timeline.plot_intervals()
+        #test1(param)
 
+        #test2(param)
+
+    test3()
