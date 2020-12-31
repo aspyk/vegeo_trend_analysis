@@ -13,6 +13,7 @@ import h5py
 import matplotlib.pyplot as plt
 import os,sys
 import fnmatch
+import pathlib
 
 def pprinttable(rows, header, fmt):
     w = 9
@@ -24,16 +25,17 @@ def pprinttable(rows, header, fmt):
     for row in rows:
         print(row_format.format(*row))
 
-def merge_trends(input_path, file_trend_name, chunks, phash):
+def merge_trends(product, chunks, config, phash):
+
+    input_path = pathlib.Path(config['output_path']['trend']) / product
+    output_file = input_path / config['output_path']['merged_filename']
 
     print('*** MERGE TRENDS')
-    nc_output = Dataset(input_path+'/'+file_trend_name,'w')
+    nc_output = Dataset(output_file, 'w')
     xdim = nc_output.createDimension('X_dim',3712)
     ydim = nc_output.createDimension('Y_dim',3712)
     Vardim = nc_output.createDimension('Var',4)
     
-    print('load0')
-
     output_data = nc_output.createVariable('chunk_scores_p_val',  np.float, ('Y_dim','X_dim'), zlib=True, least_significant_digit=3)
     output_data = nc_output.createVariable('chunk_scores_z_val',  np.float, ('Y_dim','X_dim'), zlib=True, least_significant_digit=3)
     output_data = nc_output.createVariable('chunk_scores_Sn_val', np.float, ('Y_dim','X_dim'), zlib=True, least_significant_digit=9)
@@ -48,13 +50,15 @@ def merge_trends(input_path, file_trend_name, chunks, phash):
     ## Filter the trend files with the case hash
     flist = os.listdir(input_path) 
     filenames = fnmatch.filter(flist, '{}_*'.format(phash))
+    print("Found {} files to merge.".format(len(filenames)))
             
     for child_file in filenames:
 
-        #child_file = matching_master[j][0:-1]
+        child_path = input_path / child_file
+
+        print(child_path.as_posix())
         
-        print(input_path+'/'+child_file)
-        
+        # Retrieve the global coordinates from the filename
         data = re.findall(r"[-+]?\d*\.\d+|\d+", child_file)
         data = data[-4:]
    
@@ -64,10 +68,9 @@ def merge_trends(input_path, file_trend_name, chunks, phash):
         ROW1 = int(data[2])
         ROW2 = int(data[3])
     
-
         print(ROW1, ROW2, COL1, COL2)
 
-        child_nc = Dataset(input_path+'/'+child_file, 'r')
+        child_nc = Dataset(child_path, 'r')
     
         data_child_z = child_nc.variables['chunk_scores_z_val'][:].astype('f')
         data_child_p = child_nc.variables['chunk_scores_p_val'][:].astype('f')
@@ -116,25 +119,32 @@ def merge_trends(input_path, file_trend_name, chunks, phash):
             
     nc_output.close() 
 
-    print('Plot debug tile map...')
-    plt.imshow(tile_map_glob)
-    plt.savefig('tile_map_glob.png')
-    plt.imshow(tile_map_loc)
-    plt.savefig('tile_map_loc.png')
+    if 0:
+        print('Plot debug tile map...')
+        plt.imshow(tile_map_glob)
+        plt.savefig('tile_map_glob.png')
+        plt.imshow(tile_map_loc)
+        plt.savefig('tile_map_loc.png')
     
 
-def plot_trends(input_path, output_path, file_trend_name, xlim1, xlim2, ylim1, ylim2,
-                plot_name, plot_choice, scale_tendency):
+def plot_trends(product, chunks, plot_name, plot_choice, scale_tendency, config, phash):
     
     import cartopy.crs as ccrs
     import xarray as xr
     
-    cdpzn = input_path
+    input_trend_file = pathlib.Path(config['output_path']['trend']) / product / config['output_path']['merged_filename']
+    output_path = pathlib.Path(config['output_path']['plot']) / product
 
+    # Shortcut to [ylim1:ylim2,xlim1:xlim2]
+    zone_bnd = chunks.get_limits('global', 'slice')
+
+    # Make dir if not exists
+    output_path.mkdir(parents=True, exist_ok=True)
+    
     print('*** PLOT TRENDS')
     
     ## Read merged data
-    nc_output = Dataset(cdpzn+'/'+file_trend_name,'r')
+    nc_output = Dataset(input_trend_file, 'r')
 
     trends = {}
     trends['pval'] = nc_output.variables['chunk_scores_p_val'][:]
@@ -172,13 +182,13 @@ def plot_trends(input_path, output_path, file_trend_name, xlim1, xlim2, ylim1, y
 
     if plot_choice=='sn':
         trends[plot_choice][view_zenith>75] = np.NaN
-        dx = xr.DataArray(trends[plot_choice][ylim1:ylim2,xlim1:xlim2]*scale_tendency, dims = ('y','x'))
-        '''The value of scale tendency depends on the product, daily or high frequency, for daily, the value is 365 '''
+        dx = xr.DataArray(trends[plot_choice][zone_bnd]*scale_tendency, dims = ('y','x'))
+        # The value of scale tendency depends on the product, daily or high frequency, for daily, the value is 365
     else:
-        dx = xr.DataArray(trends[plot_choice][ylim1:ylim2,xlim1:xlim2], dims = ('y','x'))
+        dx = xr.DataArray(trends[plot_choice][zone_bnd], dims = ('y','x'))
     
-    dx.coords['lat'] = (('y', 'x'), lat_MSG[ylim1:ylim2,xlim1:xlim2])
-    dx.coords['lon'] = (('y', 'x'), lon_MSG[ylim1:ylim2,xlim1:xlim2])
+    dx.coords['lat'] = (('y', 'x'), lat_MSG[zone_bnd])
+    dx.coords['lon'] = (('y', 'x'), lon_MSG[zone_bnd])
 
     cm = 'jet'
     #cm = 'nipy_spectral'
@@ -208,16 +218,15 @@ def plot_trends(input_path, output_path, file_trend_name, xlim1, xlim2, ylim1, y
     plt.axis('off')
     ax.set_title('{} for {}'.format(plot_choice, plot_name.split(':')[1]), fontsize=20)
     
-    zone_str = '_'.join([str(i) for i in [xlim1,xlim2,ylim1,ylim2]])
-    plot_save = plot_name.split(':')[0]+'_'+plot_choice+'_'+zone_str+'.png'
-    plot_string_save = output_path + '/' + plot_save
-    plot_string_save = os.path.normpath(plot_string_save)
+    zone_str = '_'.join(chunks.get_limits('global','str'))
+    plot_fname = phash+'_'+plot_choice+'_'+zone_str+'.png'
+    plot_path = output_path / plot_fname
     
     #fig.savefig(plot_string_save, dpi=300)
-    fig.savefig(plot_string_save, dpi=100)
+    fig.savefig(plot_path, dpi=100)
     plt.close()   
 
-    print('*** IMAGE SAVED >', plot_string_save)
+    print('*** IMAGE SAVED >', plot_path.as_posix())
 
 
 

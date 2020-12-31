@@ -106,7 +106,7 @@ def main():
     nmaster = args.master_chunk
    
     # Generate chunks with splitter object
-    chunks = generic.Splitter2(*args.zone_coor)
+    chunks = generic.Splitter(*args.zone_coor)
     chunks.subdivide(nmaster)
 
     # print info
@@ -146,8 +146,9 @@ def main():
 
         for prod in args.product_tag:
             print('  Process {0}'.format(yellow(prod)))
-            phash = dic_hash[prod]
-            extractor = time_series_reader.TimeSeriesExtractor(prod, args.start_date, args.end_date, chunks, yfile, phash)
+            
+            list_args = [prod, args.start_date, args.end_date, chunks, yfile, dic_hash[prod]]
+            extractor = time_series_reader.TimeSeriesExtractor(*list_args)
             extractor.run()
 
     #------------------------------------------------#
@@ -160,11 +161,9 @@ def main():
 
         for prod in args.product_tag:
             print('  Process {0}'.format(yellow(prod)))
-
-            phash = dic_hash[prod]
-
-            t_args = [ prod, chunks, args.nproc, args.delete_cache, yfile, phash]
-            estimate_trends_from_time_series.compute_trends(*t_args)
+            
+            list_args = [prod, chunks, args.nproc, args.delete_cache, yfile, dic_hash[prod]]
+            estimate_trends_from_time_series.compute_trends(*list_args)
 
     #------------------------------------------------#
     # MERGE
@@ -174,19 +173,10 @@ def main():
 
         import trend_file_merger
 
-        input_path = './output_tendencies/'
-
         for prod in args.product_tag:
             print('  Process {0}'.format(yellow(prod)))
             
-            input_path += '/'+prod 
-            input_path = os.path.normpath(input_path) + os.sep
-
-            merged_filename = 'merged_trends.nc'
-
-            phash = dic_hash[prod]
-
-            list_arg = [input_path, merged_filename, chunks, phash]
+            list_arg = [prod, chunks, yfile, dic_hash[prod]]
             trend_file_merger.merge_trends(*list_arg)
 
     #------------------------------------------------#
@@ -197,29 +187,14 @@ def main():
 
         import trend_file_merger
 
-        if args.output==None:
-            output_path = './output_plots/'
-            input_path = './output_tendencies/'
-        else:
-            output_path = args.output
-
         for prod in args.product_tag:
             print('  Process {0}'.format(yellow(prod)))
-            pathlib.Path(output_path+'/'+prod).mkdir(parents=True, exist_ok=True)
-            
-            input_path += '/'+prod 
-            input_path = os.path.normpath(input_path) + os.sep
-
-            output_path += '/'+prod 
-            output_path = os.path.normpath(output_path) + os.sep
-           
-            merged_filename = 'merged_trends.nc'
             
             phash = dic_hash[prod]
+            title = '{}:{} to {}'.format(phash, args.start_date.isoformat(), args.end_date.isoformat())
 
             for var in ['sn','zval','pval','len']:
-                list_arg = [input_path, output_path, merged_filename, *args.zone_coor,
-                            '{}:{} to {}'.format(dic_hash[prod], args.start_date.isoformat(), args.end_date.isoformat()), var, 365]
+                list_arg = [prod, chunks, title, var, 365, yfile, phash]
                 trend_file_merger.plot_trends(*list_arg)
 
 

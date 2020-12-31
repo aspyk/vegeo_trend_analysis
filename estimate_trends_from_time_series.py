@@ -351,6 +351,7 @@ def compute_trends(*args):
             self.input_file = '' 
             
             self.output_path = self.output / prod 
+            # Make dir if not exists
             self.output_path.mkdir(parents=True, exist_ok=True)
 
     # Erase output log file
