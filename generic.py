@@ -202,7 +202,6 @@ class Splitter2():
  
 
 
-
 def plot2Darray(v, var='var'):
     """Debug function to plot a 2D array in terminal"""
     import matplotlib.pyplot as plt
@@ -471,13 +470,17 @@ def binned_statistic_dd(sample, values, statistic='mean',
     #return BinnedStatisticddResult(result, edges, binnumbers)
     return (result, edges)
 
-def get_case_hash(product, start, end, limits):
+def get_case_hash(product, start, end, chunks):
     """ Return hash of the case from string parameters
     Args:
         prod: string name of the product
-        start,end: date in isoformat YYYY-MM-DD (use .isoformat() on datetime object)
-        lim: comma separated region limits
+        start,end: datetime object
+        lim: chunks object
     """
+    kwarg = {}
+    start = start.isoformat()
+    end = end.isoformat()
+    limits = ','.join(chunks.get_limits('global', 'str'))
     str_hash = '{0},{1},{2},{3}'.format(product, start, end, limits)
     #print(str_hash)
     hex_hash = hashlib.sha1(str_hash.encode("UTF-8")).hexdigest()
