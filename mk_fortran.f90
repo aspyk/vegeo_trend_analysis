@@ -17,12 +17,17 @@ Module mk_trend
     REAL*4, ALLOCATABLE, DIMENSION(:) :: s_array
     REAL*4                    :: s, var_s, tp
 
+    LOGICAL    :: debug
+
     ! allocate variables
     ALLOCATE(a(1:ndat))
     ALLOCATE(x(1:ndat))
     ALLOCATE(unique_x(1:ndat))
-    
+   
+    debug = .FALSE.
+
     ! # remove nan or negative values
+    !if (debug) write(*,*) 'remove nan and negative...'
     nx = 0
     DO i = 1,ndat
       IF (ts(i) .NE. 999) THEN
@@ -35,6 +40,7 @@ Module mk_trend
     ENDDO
     
     ! # calculate S 
+    !if (debug) write(*,*) 'calculate s...'
     s = 0
     DO k = 1,nx-1
       DO j = k,nx
@@ -43,6 +49,7 @@ Module mk_trend
     ENDDO
     
     ! # calculate the unique data
+    !if (debug) write(*,*) 'calculate unique data...'
     g = 1
     unique_x(1) = x(1)
     DO i = 2,nx
@@ -55,6 +62,7 @@ Module mk_trend
     ENDDO
     
     ! # calculate the var(s)
+    !if (debug) write(*,*) 'calculate the var...'
     IF (g .EQ. nx) THEN
       var_s = REAL(nx*(nx-1)*(2*nx+5))/18.
     ELSE
@@ -78,11 +86,13 @@ Module mk_trend
     ENDIF
     
     ! # calculate the p_value
+    !if (debug) write(*,*) 'calculate the p_value...'
     ! p = 2*(1-norm.cdf(abs(z))) # two tail test
     ! h = abs(z) > norm.ppf(1-alpha/2) 
     p = 2*(1-ncdf(ABS(z)))
     
     ! # calculate the slope
+    !if (debug) write(*,*) 'calculate the slope...'
     ns = (nx-1)*nx/2
     ALLOCATE(s_array(ns))
     i = 0
@@ -92,7 +102,9 @@ Module mk_trend
         s_array(i) = (x(j)-x(k))/(a(j)-a(k))
       ENDDO
     ENDDO
+    if (debug) write(*,*) 'median...' 
     Sn = median(s_array)
+    if (debug) write(*,*) 'median ok'
     !Sn=1.0 ! test I guess ?
     DEALLOCATE(a)
     DEALLOCATE(x)
@@ -611,8 +623,10 @@ Function median (XDONT) Result (r_median)
 !  Now, we only need to find maximum of the 1:INTH set
 !
       if (IFODD) then
+        !write(*,*) 'ODD'
         r_median = MAXVAL (XLOWT (1:INTH))
       else
+        !write(*,*) 'NOTODD'
         XWRK = MAX (XLOWT (1), XLOWT (2))
         XWRK1 = MIN (XLOWT (1), XLOWT (2))
         DO ICRS = 3, INTH
