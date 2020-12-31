@@ -7,6 +7,7 @@ import datetime
 import os,sys
 import pathlib
 import generic
+import yaml
 
 
 def parse_args():
@@ -22,7 +23,6 @@ def parse_args():
                         help='end date (ISO format %%Y-%%m-%%d) for reading of time series.',
                         type=lambda s: datetime.date.fromisoformat(s),
                         required=True)    
-    parser.add_argument('-o','--output', help='output path')    
     parser.add_argument('-p','--product_tag',
                         help='product tag or product dataset',
                         choices=['albedo', 'lai', 'evapo', 'dssf', 'lst'],
@@ -53,6 +53,10 @@ def parse_args():
 
 
 def main():
+
+    ######################
+    ### PRE-PROCESSING ###
+    ######################
 
     global zone_names
 
@@ -112,18 +116,27 @@ def main():
                                                          green(args.end_date.isoformat()), 
                                                          green(','.join(args.action))) )
 
-    kwarg = {}
-    kwarg['start'] = args.start_date.isoformat()
-    kwarg['end'] = args.end_date.isoformat()
-    kwarg['limits'] = ','.join(chunks.get_limits('global', 'str'))
     dic_hash = {}
     for p in args.product_tag:
-        kwarg['product'] = p
-        dic_hash[p] =  generic.get_case_hash(**kwarg)
+        dic_hash[p] = generic.get_case_hash(p, args.start_date, args.end_date, chunks)
         print(p, dic_hash[p] )
+
+    ## Read config yaml file
+    with open("config.yml", 'r') as stream:
+        try:
+            yfile = yaml.safe_load(stream)
+        except yaml.YAMLError as exc:
+            print(exc)
+            sys.exit()
+
+
+    ##################
+    ### PROCESSING ###
+    ##################
 
     ## Run the selected pipeline actions
    
+    #------------------------------------------------#
     # EXTRACT
     #------------------------------------------------#
     if 'extract' in args.action:
@@ -131,17 +144,13 @@ def main():
 
         import time_series_reader
 
-        if args.output==None:
-            list_args = [args.start_date, args.end_date, None, chunks]
-        else:
-            list_args = [args.start_date, args.end_date, None, chunks, args.output]
-
         for prod in args.product_tag:
             print('  Process {0}'.format(yellow(prod)))
-            list_args[2] = prod
-            extractor = time_series_reader.TimeSeriesExtractor(*list_args)
+            phash = dic_hash[prod]
+            extractor = time_series_reader.TimeSeriesExtractor(prod, args.start_date, args.end_date, chunks, yfile, phash)
             extractor.run()
 
+    #------------------------------------------------#
     # TREND
     #------------------------------------------------#
     if 'trend' in args.action:
@@ -149,22 +158,15 @@ def main():
 
         import estimate_trends_from_time_series
 
-        if args.output==None:
-            output_path = './output_tendencies/'
-            input_path = './output_timeseries/'
-        else:
-            output_path = args.output
-
         for prod in args.product_tag:
             print('  Process {0}'.format(yellow(prod)))
-            pathlib.Path(output_path+'/'+prod).mkdir(parents=True, exist_ok=True)
 
             phash = dic_hash[prod]
 
-            #str_arg = [str(i) for i in [phash, input_path, output_path, prod, *args.zone_coor, nmaster, nproc]]
-            t_args = [phash, input_path, output_path, prod, chunks, args.nproc, args.delete_cache]
+            t_args = [ prod, chunks, args.nproc, args.delete_cache, yfile, phash]
             estimate_trends_from_time_series.compute_trends(*t_args)
 
+    #------------------------------------------------#
     # MERGE
     #------------------------------------------------#
     if 'merge' in args.action:
@@ -187,6 +189,7 @@ def main():
             list_arg = [input_path, merged_filename, chunks, phash]
             trend_file_merger.merge_trends(*list_arg)
 
+    #------------------------------------------------#
     # PLOT
     #------------------------------------------------#
     if 'plot' in args.action:
@@ -211,6 +214,8 @@ def main():
             output_path = os.path.normpath(output_path) + os.sep
            
             merged_filename = 'merged_trends.nc'
+            
+            phash = dic_hash[prod]
 
             for var in ['sn','zval','pval','len']:
                 list_arg = [input_path, output_path, merged_filename, *args.zone_coor,

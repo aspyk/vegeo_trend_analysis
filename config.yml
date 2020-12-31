@@ -49,3 +49,9 @@ al_mdal_nrt:
     template: 'AL2-%Y%m%d/HDF5_LSASAF_MSG_ALBEDO_MSG-Disk_%Y%m%d0000*'
     freq: '1D'
     var: 'AL-BB-DH'
+
+ # Dir to store cache and output
+output_path:
+    extract: './output_extract'
+    trend: './output_trend'
+    plot: './output_plot'

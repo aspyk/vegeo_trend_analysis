@@ -23,49 +23,68 @@ import datetime
 import psutil
 import pathlib
 
-
+if 0:
+    from functools import wraps
+    import errno
+    import os
+    import signal
     
-def init_worker_nc(var_dict, file_timeseries, file_outpath):
-        '''
-        Initialize the pool with boundaries of data to be read and write
-        currently, the last version of the code uses only the input time series data
-        Rest of arguments are not used
-        '''
-        
-        # Using a dictionary to initialize all the boundaries of the grid
-        var_dict['file_input_time_series'] = file_timeseries
-        var_dict['file_output_tendencies'] = file_outpath
+    class TimeoutError(Exception):
+        pass
+    
+    def timeout(seconds=10, error_message=os.strerror(errno.ETIME)):
+        def decorator(func):
+            def _handle_timeout(signum, frame):
+                raise TimeoutError(error_message)
+    
+            def wrapper(*args, **kwargs):
+                signal.signal(signal.SIGALRM, _handle_timeout)
+                signal.setitimer(signal.ITIMER_REAL,seconds) #used timer instead of alarm
+                try:
+                    result = func(*args, **kwargs)
+                finally:
+                    signal.alarm(0)
+                return result
+            return wraps(func)(wrapper)
+        return decorator
+    
+    @timeout(2.0)
+    def mk_test_timeout(data_test):
+        return m.mk_trend(len(data_test), np.arange(len(data_test)), data_test)
+
+
     
  
 def processInput_trends(subchunk, parent_iteration, child_iteration):
     """This is the main file that calculate trends"""
 
     #print('INFO: see pid.<pid>.out to monitor trend computation progress')
-    #sys.stdout = open('pid'+str(os.getpid()) + '.out', 'w')
-    #sys.stdout = open('pid.out', 'a')
+    #sys.stdout = open('pid.'+str(os.getpid()) + '.out', 'w')
+    
+    #print('INFO: see trend.out to monitor trend computation progress')
+    #sys.stdout = open('trend.out', 'a')
 
     print ('### Chunk {} > subchunk {} started: COL: [{}:{}] ROW: [{}:{}]'.format(parent_iteration, child_iteration, *subchunk.get_limits('local', 'str')))
 
     ## Debug tool to print process Ids
     process = psutil.Process(os.getpid())
     current = current_process()
-    #print(current._identity, f'{process.memory_info().rss/1024/1024} Mo')
+    print(process, current._identity, '{} Mo'.format(process.memory_info().rss/1024/1024))
 
+    ## Check if cache file already exists and must be overwritten
     write_string0 = (param.hash+"_CHUNK_" + np.str(parent_iteration)  
                      + "_SUBCHUNK_" + np.str(child_iteration)   
                      + "_" + '_'.join(subchunk.get_limits('global', 'str'))
                      + '.nc')
-    subchunk_fname = var_dict['file_output_tendencies'] + '/' + write_string0
-    subchunk_fname = os.path.normpath(subchunk_fname)
+    subchunk_fname = param.output_path / write_string0
 
-    ## Check if cache file already exists and must be overwritten
     if not param.b_delete:
-        if pathlib.Path(subchunk_fname).is_file():
+        if subchunk_fname.is_file():
             print ('Subchunk {} already exists in {}. Use -d option to overwrite it.'.format(child_iteration, write_string0))
             return
 
     ## Read the input time series file from main chunk, configured length of time X 500 X 500; it may vary if different chunks are used
-    hdf_ts = Dataset(var_dict['file_input_time_series'], 'r', format='NETCDF4')
+    hdf_ts = Dataset(param.input_file, 'r', format='NETCDF4')
 
     ## Create temporary storage with size of sub chunks in main chunk, currently configured 100 by 100 blocks
     var_temp_output = np.empty([*subchunk.dim,4])    
@@ -88,21 +107,24 @@ def processInput_trends(subchunk, parent_iteration, child_iteration):
     tab_prof_zero = []
 
     for jj_sub in range(subchunk.dim[0]):
-    #for jj_sub in range(28,30): #debug
+    #for jj_sub in range(61,80): #debug
         # dimension of variable: time,x,y
         # preload all the y data here to avoid overhead due to calling Dataset.variables at each iteration in the inner loop
         data_test0 = hdf_ts.variables['time_series_chunk'][:,jj_sub+offsety,offsetx:offsetx+subchunk.dim[1]]
         #data_test0 = hdf_ts.variables['time_series_chunk'][:500,sub_chunks_x[ii_sub],:]
 
         for ii_sub in range(subchunk.dim[1]):
+        #for ii_sub in range(55,100):
             if b_deb: print('---------------')
             if b_deb: print('jj: {} - ii: {} '.format(jj_sub, ii_sub))
             
             t0 = timer()
 
             data_test = data_test0[:,ii_sub]
-    
 
+            ## remove tie group
+            data_test[1:][np.diff(data_test)==0.] = np.nan
+    
             #data_test=hdf_ts.variables['time_series_chunk'][:,sub_chunks_x[ii_sub],sub_chunks_y[jj_sub]]
             slope=999.0
 
@@ -110,23 +132,22 @@ def processInput_trends(subchunk, parent_iteration, child_iteration):
                 print('t0', timer()-t0)
                 t0 = timer()
 
-            if b_deb: print('Data:', f'{data_test.size - np.isnan(data_test).sum()}/{data_test.size}')
+            if b_deb: print('Data valid:', data_test.size - np.isnan(data_test).sum(), '/', data_test.size)
             
             if 0:
-                #print('Use mstats')
-
+                print('Use mstats')
                 data_sen=np.ma.masked_array(data_test, mask=np.isnan(data_test))
-
                 t0 = timer()
-
                 slope, intercept, lo_slope, up_slope = mstats.theilslopes(data_sen, alpha=0.1)
-                
+                print('slope, intercept, lo_slope, up_slop:')
+                print(slope, intercept, lo_slope, up_slope)
                 if b_deb: print('t02', timer()-t0)
+                np.savetxt('data_test.dat', data_test.T)
+                sys.exit()
                 t0 = timer()
 
-            ''' this mstats give correct slope and is consistent with python man-kendall score of Sn; this is fast than Fortran'''
-
-            ''' stats.theilslopes is giving incorrect values when NaN are inside data'''
+            # this mstats give correct slope and is consistent with python man-kendall score of Sn; this is fast than Fortran'''
+            # stats.theilslopes is giving incorrect values when NaN are inside data'''
             
             if b_deb:
                 print('t2', timer()-t0)
@@ -144,11 +165,18 @@ def processInput_trends(subchunk, parent_iteration, child_iteration):
                 ## orinal mann-kendall test :
                 bla = data_test[data_test!=999]
                 if bla.size > 0:
-                    #print('min/mean/max', bla.min(), bla.mean(), bla.max(), len(bla))
+                    #print('min/mean/max/nb/nb_unique', bla.min(), bla.mean(), bla.max(), len(bla), len(np.unique(bla)))
+                    #print(bla)
                     if len(np.unique(bla))==1:
                         p,z,Sn,nx = [0,0,0,0] 
                     else:
                         #data_test = data_test[-10:] # debug line to speed up
+                        
+                        #try:
+                        #    p,z,Sn,nx = mk_test_timeout(data_test)
+                        #except TimeoutError as e:
+                        #    print('timeout!')
+                        #    p,z,Sn,nx = [0,0,0,0] 
                         p,z,Sn,nx = m.mk_trend(len(data_test), np.arange(len(data_test)), data_test)
                 else:
                     p,z,Sn,nx = m.mk_trend(len(data_test), np.arange(len(data_test)), data_test)
@@ -166,10 +194,24 @@ def processInput_trends(subchunk, parent_iteration, child_iteration):
                     else:
                         tab_prof_valid.append(t4)
                     
-                print(t4)
+                print('t4=', t4)
+                if 0:
+                    import matplotlib.pyplot as plt
+                    plt.clf()
+                    plt.plot(bla)
+                    plt.ylim(0,6.1)
+                    ti1 = '{}/{} - {:.3f} s'.format(jj_sub, ii_sub, t4)
+                    ti2 = 'min/mean/max/nb/nb_unique {:.3f} {:.3f} {:.3f} {} {}'.format(bla.min(), bla.mean(), bla.max(), len(bla), len(np.unique(bla)))
+                    ti3 = 'slope: {}'.format(Sn)
+                    plt.title(ti1+'\n'+ti2+'\n'+ti3)
+                    if Sn==0.0:
+                        plt.savefig('bla.Sn0.{}.{}.png'.format(jj_sub, ii_sub))
+                    else:
+                        plt.savefig('bla.{}.{}.png'.format(jj_sub, ii_sub))
                 t0 = timer()
 
             if b_deb: print('p,z,slope,nx', p,z,slope,nx)
+            if b_deb: print('p,z,Sn,nx', p,z,Sn,nx)
 
             var_temp_output[jj_sub,ii_sub,0] = p
             var_temp_output[jj_sub,ii_sub,1] = z
@@ -188,6 +230,7 @@ def processInput_trends(subchunk, parent_iteration, child_iteration):
             print('{} : {}.{}.block[{}-{}] : {:.3f}s elapsed : {:.3f} us/pix/date : {:.2f}% valid'.format(datetime.datetime.now(), parent_iteration, child_iteration, jj_sub+1-print_freq, jj_sub+1, elapsed, eff, valid))
 
             t00 = timer()
+            sys.stdout.flush()
 
         if 0:
             t_mean += timer()-t00
@@ -211,7 +254,8 @@ def processInput_trends(subchunk, parent_iteration, child_iteration):
         #return
         #sys.exit()
 
-    print(f't000tot.p{current._identity[0]} {timer()-t000:.3f}s {process.memory_info().rss/1024/1024:.2f}Mo')
+    print('t000tot.p{} {:.3f}s {:.2f}Mo'.format(current._identity, timer()-t000, process.memory_info().rss/1024/1024))
+
 
     if lock.acquire():
         #print ('Pool process Thread Locked:')
@@ -239,7 +283,7 @@ def processInput_trends(subchunk, parent_iteration, child_iteration):
    
         hdf_ts.close() 
     
-        print ('Subchunk {} completed, save to {}'.format(child_iteration, write_string0))
+        print ('Subchunk {} completed, save to {}'.format(child_iteration, subchunk_fname))
         
         return None 
 
@@ -247,72 +291,71 @@ def processInput_trends(subchunk, parent_iteration, child_iteration):
 
 def main():
 
-    input_path = param.input
-    output_path = param.output
-    product_tag = param.product_tag
+    # Calculate trend from the each time series of master chunks 
     
-    inpath_final = os.path.normpath(input_path+os.sep + product_tag + os.sep) + os.sep
-    outpath_final = os.path.normpath(output_path + os.sep + product_tag + os.sep) + os.sep
-
     nchild = 100
-    main_block_iteration = 0
+    main_iteration = 0
+    
     for chunk in param.chunks.list:
-        #print("Chunk:", iter_row,iter_col)
-        # Calculate trend from the each time series of master chunks 
-        in_file = inpath_final+param.hash+'_timeseries_'+ '_'.join(chunk.get_limits('global','str'))+'.nc'
+        
+        param.input_file = param.input_path / (param.hash+'_timeseries_'+ '_'.join(chunk.get_limits('global','str'))+'.nc')
         print('> calculating trend for the chunk:') 
-        print(in_file)
+        print(param.input_file.as_posix())
         print('***Row/y_SIZE***', chunk.dim[0], '***Col/x_SIZE***', chunk.dim[1]) 
         
+        # Subdivide each chunk into subchunks, the latter being then possibly multiprocessed
         chunk.subdivide(nchild)
 
-        result_chunks = [(sub, main_block_iteration, i) for i,sub in enumerate(chunk.list)]
+        result_chunks = [(sub_chunk, main_iteration, sub_iteration) for sub_iteration,sub_chunk in enumerate(chunk.list)]
         
-        # Use multiprocessing
+        #### Use multiprocessing
         if 1:
 
             # Applying the multiple processing here, with process of choice, i use 4 for local and 16 for lustre 
-            # Here we pass the arguments to the initializer for pool so we use in the function used in multiple processing, it can be changed differently 
-            with Pool(processes=param.nproc, initializer=init_worker_nc, initargs=(var_dict, in_file, outpath_final)) as pool:
-                # I am not returning results, usually you can return and write the results after multiprocessing
+            with Pool(processes=param.nproc) as pool:
                 print('pool started')
-                results = pool.starmap(processInput_trends, [(i) for i in result_chunks])
+                results = pool.starmap(processInput_trends, result_chunks)
                 pool.close()
                 pool.join()
                 print('pool cleaned')
 
-        ## or so it sequentially
+        #### or do it sequentially
         else:
 
-            init_worker_nc(var_dict, in_file, outpath_final)
             for i in result_chunks:
                 processInput_trends(*i)
 
 
-        # increase the main block iteration
-        main_block_iteration += 1
+        # increase the main iteration
+        main_iteration += 1
 
 
 def compute_trends(*args):
     # Lock is the module from multiprocessing to allow the write of netcdf files one at a time to avoid conflict, first invocation here in main
 
     global lock 
-    global var_dict 
 
     lock = Lock()
-    var_dict = {}
 
     class ArgsTmp:
-        def __init__(self, h, inp, outp, prod, chunks, np, b_delete):
+        def __init__(self, prod, chunks, np, b_delete, config, h):
             self.hash = h
-            self.input = inp
-            self.output = outp
+            self.input = pathlib.Path(config['output_path']['extract'])
+            self.output = pathlib.Path(config['output_path']['trend'])
             self.product_tag = prod
             self.nproc = np
             self.chunks = chunks
             self.b_delete = b_delete
+        
+            self.input_path = self.input / prod 
+            self.input_file = '' 
+            
+            self.output_path = self.output / prod 
+            self.output_path.mkdir(parents=True, exist_ok=True)
 
-
+    # Erase output log file
+    fic = open('trend.out','w')
+    fic.close()
 
     global param 
     param = ArgsTmp(*args)
@@ -324,7 +367,6 @@ if __name__ == "__main__":
     try:
         # Lock is the module from multiprocessing to allow the write of netcdf files one at a time to avoid conflict, first invocation here in main
         lock = Lock()
-        var_dict = {}
         param = parse_args()
         main()
     

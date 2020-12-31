@@ -12,13 +12,6 @@ f2py -c mk_fortran.f90 -m mankendall_fortran_repeat_exp2 --fcompiler=gfortran
 if not try this
 LDFLAGS=-shared f2py -c mk_fortran.f90 -m mankendall_fortran_repeat_exp2 --fcompiler=gfortran
 
-dimensions of 4 regions of MSG-Disk
-
-  Character(Len=4), Dimension(1:4) :: zone = (/ 'Euro', 'NAfr', 'SAfr', 'SAme' /)
-  Integer,          Dimension(1:4) :: xmin = (/  1550 ,  1240 ,  2140 ,    40  /)
-  Integer,          Dimension(1:4) :: xmax = (/  3250 ,  3450 ,  3350 ,   740  /)
-  Integer,          Dimension(1:4) :: ymin = (/    50 ,   700 ,  1850 ,  1460  /)
-  Integer,          Dimension(1:4) :: ymax = (/   700 ,  1850 ,  3040 ,  2970  /)
 """
 
 from datetime import datetime
@@ -36,37 +29,24 @@ import traceback
 from timeit import default_timer as timer
 import generic
 import pathlib
-import yaml
 from string import Template
 
 
 class TimeSeriesExtractor():
-    def __init__(self, start, end, product, chunks, output_path='./output_timeseries/'):
+    def __init__(self, product, start, end, chunks, config, phash):
         self.start = start
         self.end = end
         self.product = product
         self.chunks = chunks
-        self.output_path = output_path
+        self.hash = phash
         
-        pathlib.Path(self.output_path+'/'+self.product).mkdir(parents=True, exist_ok=True)
-        
-        # get product part in config.yml
-        with open("config.yml", 'r') as stream:
-            try:
-                yfile = yaml.safe_load(stream)
-            except yaml.YAMLError as exc:
-                print(exc)
-                sys.exit()
-        self.config = yfile[self.product]
+        self.config = config[self.product]
+
+        self.output_path = pathlib.Path(config['output_path']['extract'])
+        (self.output_path / self.product).mkdir(parents=True, exist_ok=True)
 
         self.dseries = pd.date_range(self.start, self.end, freq=self.config['freq'])
         
-        kwarg = {}
-        kwarg['start'] = start.isoformat()
-        kwarg['end'] = end.isoformat()
-        kwarg['limits'] = ','.join(chunks.get_limits('global', 'str'))
-        kwarg['product'] = product
-        self.hash = generic.get_case_hash(**kwarg)
 
     def get_lw_mask(self):
         """ Get the MSG disk land mask (0: see, 1: land, 2: outside space, 3: river/lake)"""
@@ -143,7 +123,8 @@ class TimeSeriesExtractor():
  
     def write_ts_chunk(self, chunk, tseries):
         """Write time series of the data for each master iteration"""
-        write_file = self.output_path+self.product+'/'+self.hash+'_timeseries_'+'_'.join(chunk.get_limits('global', 'str'))+'.nc'
+        write_file = self.output_path / self.product / (self.hash+'_timeseries_'+'_'.join(chunk.get_limits('global', 'str'))+'.nc')
+        write_file = write_file.as_posix()
     
         nc_iter = Dataset(write_file, 'w', format='NETCDF4')
         
@@ -228,7 +209,7 @@ class TimeSeriesExtractor():
     def get_product_files(self):
         for date in self.dseries:
             ## merge root dir with substituted template
-            file_name = pathlib.Path(self.config['root']) / pathlib.Path(date.strftime(self.config['template']))
+            file_name = pathlib.Path(self.config['root']) / date.strftime(self.config['template'])
             print(file_name)
             # Note: the with/yield pattern should be checked to see if files are corectly closed
             try:
