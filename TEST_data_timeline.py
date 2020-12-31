@@ -24,11 +24,11 @@ logging.basicConfig(format='%(asctime)s %(message)s', level=logging.INFO)
 
 
 class Timeline():
-    """
-    TODO: merge continuous interval between end of the month and the start of the following
-    """
 
     def __init__(self, prod, path_template, freq):
+        """
+        Convert path parameter to pathlib.Path and string template
+        """
         logging.info('> {}'.format(prod))
         self.path_template = pathlib.Path(path_template)
         logging.debug(self.path_template.parts)
