@@ -10,7 +10,6 @@ import numpy as np
 from netCDF4 import Dataset
 import re
 import h5py
-import matplotlib.pyplot as plt
 import os,sys
 import fnmatch
 import pathlib
@@ -27,6 +26,15 @@ def pprinttable(rows, header, fmt):
         print(row_format.format(*row))
 
 def merge_trends(product, chunks, config, phash):
+    """
+    profiling:
+        Slower part of the code are the 4 lines: 
+            nc_output.variables['xxx'][:] = temp_store_trend[:,:,x]
+        This is du to big amount of data and their compression.
+        Call only once so not problematic.
+    """
+
+    b_debug = 0
 
     input_path = pathlib.Path(config['output_path']['trend']) / product
     output_file = input_path / config['output_path']['merged_filename']
@@ -42,11 +50,11 @@ def merge_trends(product, chunks, config, phash):
     output_data = nc_output.createVariable('chunk_scores_Sn_val', np.float, ('Y_dim','X_dim'), zlib=True, least_significant_digit=9)
     output_data = nc_output.createVariable('chunk_scores_length', np.float, ('Y_dim','X_dim'), zlib=True, least_significant_digit=3)
     
-    temp_store_trend = np.empty([3712,3712,4])
-    temp_store_trend[:] = np.NaN
+    temp_store_trend = np.full((3712,3712,4), np.nan)
     
-    tile_map_glob = np.full((3712,3712), np.nan)
-    tile_map_loc = np.full(chunks.dim, np.nan)
+    if b_debug:
+        tile_map_glob = np.full((3712,3712), np.nan)
+        tile_map_loc = np.full(chunks.dim, np.nan)
 
     ## Filter the trend files with the case hash
     flist = os.listdir(input_path) 
@@ -69,7 +77,7 @@ def merge_trends(product, chunks, config, phash):
         ROW1 = int(data[2])
         ROW2 = int(data[3])
     
-        print(ROW1, ROW2, COL1, COL2)
+        #print(ROW1, ROW2, COL1, COL2)
 
         child_nc = Dataset(child_path, 'r')
     
@@ -87,31 +95,32 @@ def merge_trends(product, chunks, config, phash):
         temp_store_trend[ROW1:ROW2,COL1:COL2,3] = data_child_length
 
         ## Fill a tile map to debug
-        tmp = 0.5*np.ones((ROW2-ROW1,COL2-COL1))
-        tmp[:,:] = data_child_length
-        tmp = np.where(tmp==0.0, 0.0, 0.5) # create a mask for valid data (~land)
-        tmp[:,[0,-1]] = 1.0 # add border of the tile
-        tmp[[0,-1],:] = 1.0 # idem
-        tile_map_glob[ROW1:ROW2,COL1:COL2] = tmp
-        offsetx = chunks.get_limits('global', 'tuple')[0]
-        offsety = chunks.get_limits('global', 'tuple')[2]
-        tile_map_loc[ROW1-offsety:ROW2-offsety,COL1-offsetx:COL2-offsetx] = tmp
+        if b_debug:
+            tmp = 0.5*np.ones((ROW2-ROW1,COL2-COL1))
+            tmp[:,:] = data_child_length
+            tmp = np.where(tmp==0.0, 0.0, 0.5) # create a mask for valid data (~land)
+            tmp[:,[0,-1]] = 1.0 # add border of the tile
+            tmp[[0,-1],:] = 1.0 # idem
+            tile_map_glob[ROW1:ROW2,COL1:COL2] = tmp
+            offsetx = chunks.get_limits('global', 'tuple')[0]
+            offsety = chunks.get_limits('global', 'tuple')[2]
+            tile_map_loc[ROW1-offsety:ROW2-offsety,COL1-offsetx:COL2-offsetx] = tmp
 
-        # DEBUG
-        var = temp_store_trend[chunks.get_limits('global', 'slice')]
-        size = var.shape[0]*var.shape[1]
-        header = ['var', 'valid[%]', 'min', 'max']
-        fmt = ['s','.1f','.3f','.3f']
-        rows = []
-        v = var[:,:,3] 
-        rows.append(['len', 100.*(1.-np.count_nonzero(v==0.0)/size), np.nanmin(v), np.nanmax(v)])
-        v = var[:,:,0] 
-        rows.append(['pval', 100.*(1-np.count_nonzero(v>0.05)/size), np.nanmin(v), np.nanmax(v)])
-        v = var[:,:,1] 
-        rows.append(['zval', 100.*(1-np.count_nonzero(v==0.0)/size), np.nanmin(v), np.nanmax(v)])
-        v = var[:,:,2] 
-        rows.append(['sn', 100.*(1-np.count_nonzero(v==0.5)/size), np.nanmin(v), np.nanmax(v)])
-        pprinttable(rows, header, fmt)
+            # DEBUG
+            var = temp_store_trend[chunks.get_limits('global', 'slice')]
+            size = var.shape[0]*var.shape[1]
+            header = ['var', 'valid[%]', 'min', 'max']
+            fmt = ['s','.1f','.3f','.3f']
+            rows = []
+            v = var[:,:,3] 
+            rows.append(['len', 100.*(1.-np.count_nonzero(v==0.0)/size), np.nanmin(v), np.nanmax(v)])
+            v = var[:,:,0] 
+            rows.append(['pval', 100.*(1-np.count_nonzero(v>0.05)/size), np.nanmin(v), np.nanmax(v)])
+            v = var[:,:,1] 
+            rows.append(['zval', 100.*(1-np.count_nonzero(v==0.0)/size), np.nanmin(v), np.nanmax(v)])
+            v = var[:,:,2] 
+            rows.append(['sn', 100.*(1-np.count_nonzero(v==0.5)/size), np.nanmin(v), np.nanmax(v)])
+            pprinttable(rows, header, fmt)
 
     nc_output.variables['chunk_scores_p_val'][:] = temp_store_trend[:,:,0]
     nc_output.variables['chunk_scores_z_val'][:] = temp_store_trend[:,:,1]
@@ -120,8 +129,13 @@ def merge_trends(product, chunks, config, phash):
             
     nc_output.close() 
 
-    if 0:
+    print("Output file saved to: {}".format(output_file))
+
+    if b_debug:
         print('Plot debug tile map...')
+        
+        import matplotlib.pyplot as plt
+        
         plt.imshow(tile_map_glob)
         plt.savefig('tile_map_glob.png')
         plt.imshow(tile_map_loc)
@@ -279,6 +293,7 @@ def plot_trends(product, chunks, plot_name, plot_choice, scale_tendency, config,
     import xarray is still long (several second) but only at the first call
     """
     
+    import matplotlib.pyplot as plt
     import cartopy.crs as ccrs
     import xarray as xr
     
