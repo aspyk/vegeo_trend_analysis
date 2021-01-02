@@ -151,8 +151,9 @@ def plot_trends(product, chunks, plot_name, plot_choice, scale_tendency, config,
     
     import matplotlib.pyplot as plt
     import cartopy.crs as ccrs
-    import xarray as xr
     
+    b_xarray = 0 # use legacy xarray or pcolormesh directly
+
     input_trend_file = pathlib.Path(config['output_path']['trend']) / product / config['output_path']['merged_filename']
     output_path = pathlib.Path(config['output_path']['plot']) / product
 
@@ -179,11 +180,17 @@ def plot_trends(product, chunks, plot_name, plot_choice, scale_tendency, config,
     work_dir_msg = './input_ancillary/'
 
     latmsg = h5py.File(work_dir_msg+'HDF5_LSASAF_MSG_LAT_MSG-Disk_4bytesPrecision','r')
-    lat_MSG = 0.0001*latmsg['LAT'][zone_bnd]
-
     lonmsg = h5py.File(work_dir_msg+'HDF5_LSASAF_MSG_LON_MSG-Disk_4bytesPrecision','r')
-    lon_MSG = 0.0001*lonmsg['LON'][zone_bnd]
+    if b_xarray:
+        lat_MSG = 0.0001*latmsg['LAT'][zone_bnd]
+        lon_MSG = 0.0001*lonmsg['LON'][zone_bnd]
+    else: 
+        x1,x2,y1,y2 = chunks.get_limits('global', 'tuple')
+        bnd2 = (slice(y1-1,y2+1), slice(x1-1,x2+1))
+        lat_MSG = 0.0001*latmsg['LAT'][bnd2]
+        lon_MSG = 0.0001*lonmsg['LON'][bnd2]
     
+
     hangle_view_zen = h5py.File(work_dir_msg+'GEO_L1B-ANGLES-MSG2_2012-06-15T13-00-00_V1-00.hdf5','r')
     view_zenith = hangle_view_zen['View_Zenith'][zone_bnd]
     view_zenith = np.array(view_zenith,dtype='float')
@@ -202,38 +209,74 @@ def plot_trends(product, chunks, plot_name, plot_choice, scale_tendency, config,
     #fig, ax = plt.subplots(figsize=(12, 12), subplot_kw={'projection':proj})
     fig, ax = plt.subplots(subplot_kw={'projection':proj})
 
-    if plot_choice=='sn':
-        trends[plot_choice][view_zenith>75] = np.NaN
-        dx = xr.DataArray(trends[plot_choice]*scale_tendency, dims = ('y','x'))
-        # The value of scale tendency depends on the product, daily or high frequency, for daily, the value is 365
-    else:
-        dx = xr.DataArray(trends[plot_choice], dims = ('y','x'))
-    
-    dx.coords['lat'] = (('y', 'x'), lat_MSG)
-    dx.coords['lon'] = (('y', 'x'), lon_MSG)
-
     cm = 'jet'
     #cm = 'nipy_spectral'
     #cm = 'RdBu_r'
 
-    if plot_choice=='sn':
-        #imm = dx.plot(x='lon', y='lat',transform=ccrs.PlateCarree(), vmin=-1E-5, vmax=1E-5, cmap='RdBu_r', add_colorbar=False, extend='neither', ax=ax)
-        imm = dx.plot(x='lon', y='lat',transform=ccrs.PlateCarree(), vmin=-1E-1, vmax=1E-1, cmap=cm, add_colorbar=False, extend='neither', ax=ax)
+    if b_xarray:
+        ## use xarray to plot
+        import xarray as xr
+
+        if plot_choice=='sn':
+            trends[plot_choice][view_zenith>75] = np.NaN
+            dx = xr.DataArray(trends[plot_choice]*scale_tendency, dims = ('y','x'))
+            # The value of scale tendency depends on the product, daily or high frequency, for daily, the value is 365
+        else:
+            dx = xr.DataArray(trends[plot_choice], dims = ('y','x'))
+        
+        dx.coords['lat'] = (('y', 'x'), lat_MSG)
+        dx.coords['lon'] = (('y', 'x'), lon_MSG)
 
 
-    if plot_choice=='zval':
-        imm = dx.plot(x='lon', y='lat', transform=ccrs.PlateCarree(), vmin=-10, vmax=10, cmap=cm, add_colorbar=False, extend='neither', ax=ax)
-        #imm = dx.plot(x='lon', y='lat', transform=ccrs.PlateCarree(), cmap='RdBu_r', add_colorbar=False, extend='neither', ax=ax)
+        if plot_choice=='sn':
+            imm = dx.plot(x='lon', y='lat',transform=ccrs.PlateCarree(), vmin=-1E-1, vmax=1E-1, cmap=cm, add_colorbar=False, extend='neither', ax=ax)
 
-    if plot_choice=='pval':
-        imm = dx.plot(x='lon', y='lat', transform=ccrs.PlateCarree(), vmin=0., vmax=1., cmap=cm, add_colorbar=False, extend='neither', ax=ax)
-        #imm = dx.plot(x='lon', y='lat', transform=ccrs.PlateCarree(), cmap='RdBu_r', add_colorbar=False, extend='neither', ax=ax)
+        if plot_choice=='zval':
+            imm = dx.plot(x='lon', y='lat', transform=ccrs.PlateCarree(), vmin=-10, vmax=10, cmap=cm, add_colorbar=False, extend='neither', ax=ax)
 
-    if plot_choice=='len':
-        imm = dx.plot(x='lon', y='lat', transform=ccrs.PlateCarree(), cmap=cm, add_colorbar=False, extend='neither', ax=ax)
+        if plot_choice=='pval':
+            imm = dx.plot(x='lon', y='lat', transform=ccrs.PlateCarree(), vmin=0., vmax=1., cmap=cm, add_colorbar=False, extend='neither', ax=ax)
 
-    cbar = plt.colorbar(imm,ax=ax,orientation='horizontal',shrink=.8,pad=0.05,aspect=10)
-    cbar.ax.tick_params(labelsize=14,rotation=90)
+        if plot_choice=='len':
+            imm = dx.plot(x='lon', y='lat', transform=ccrs.PlateCarree(), cmap=cm, add_colorbar=False, extend='neither', ax=ax)
+
+    else:
+        ## use pcolormesh directly with recreated mesh
+
+        # Note:
+        # Use of xarray yield warning since x, y and c have the same size and so nearest interpolation is used in pcolormesh.
+        # This may cause plotting  problem when it tries to recreate cells when the projection is not monotonic (this is the case
+        # when trying to plot Euro for example).
+        # One solution is to yield manually the cells coordinates to pcolormesh directly.
+        # See: 
+        # https://github.com/matplotlib/matplotlib/issues/18317#issuecomment-678666099
+        # https://bairdlangenbrunner.github.io/python-for-climate-scientists/matplotlib/pcolormesh-grid-fix.html
+
+        # Recreate cells coordinates for each pixel value
+        # Compute the mean of the lon/lat of the 4 adjacent cells to have the new cell corner
+        lon = lon_MSG
+        lon = 0.25*(lon[:-1,:-1]+lon[1:,:-1]+lon[:-1,1:]+lon[1:,1:])
+        lat = lat_MSG
+        lat = 0.25*(lat[:-1,:-1]+lat[1:,:-1]+lat[:-1,1:]+lat[1:,1:])
+
+        if plot_choice=='sn':
+            trends[plot_choice][view_zenith>75] = np.NaN
+            vn,vx = (-1E-1, 1E-1)
+
+        elif plot_choice=='zval':
+            vn, vx = (-10, 10)
+
+        elif plot_choice=='pval':
+            vn,vx = (0., 1.)
+
+        elif plot_choice=='len':
+            vn = np.nanmin(trends[plot_choice])
+            vx = np.nanmax(trends[plot_choice])
+
+        imm = ax.pcolormesh(lon, lat, trends[plot_choice], transform=ccrs.PlateCarree(), vmin=vn, vmax=vx, cmap=cm)
+
+    cbar = plt.colorbar(imm, ax=ax, orientation='horizontal', shrink=.8, pad=0.05, aspect=10)
+    cbar.ax.tick_params(labelsize=14, rotation=90)
 
     ax.coastlines()
     plt.axis('off')
