@@ -27,7 +27,7 @@ def pprinttable(rows, header, fmt):
 
 def merge_trends(product, chunks, config, phash):
     """
-    profiling:
+    profiling info:
         Slower part of the code are the 4 lines: 
             nc_output.variables['xxx'][:] = temp_store_trend[:,:,x]
         This is du to big amount of data and their compression.
@@ -37,7 +37,7 @@ def merge_trends(product, chunks, config, phash):
     b_debug = 0
 
     input_path = pathlib.Path(config['output_path']['trend']) / product
-    output_file = input_path / config['output_path']['merged_filename']
+    output_file = input_path / (phash+'_'+config['output_path']['merged_filename'])
 
     print('*** MERGE TRENDS')
     nc_output = Dataset(output_file, 'w')
@@ -58,7 +58,7 @@ def merge_trends(product, chunks, config, phash):
 
     ## Filter the trend files with the case hash
     flist = os.listdir(input_path) 
-    filenames = fnmatch.filter(flist, '{}_*'.format(phash))
+    filenames = fnmatch.filter(flist, '{}_CHUNK*'.format(phash))
     print("Found {} files to merge.".format(len(filenames)))
             
     for child_file in filenames:
@@ -153,7 +153,7 @@ def plot_trends(product, chunks, plot_name, plot_choice, scale_tendency, config,
     import cartopy.crs as ccrs
     
 
-    input_trend_file = pathlib.Path(config['output_path']['trend']) / product / config['output_path']['merged_filename']
+    input_trend_file = pathlib.Path(config['output_path']['trend']) / product / (phash+'_'+config['output_path']['merged_filename'])
     output_path = pathlib.Path(config['output_path']['plot']) / product
 
     # Shortcut to [ylim1:ylim2,xlim1:xlim2]
