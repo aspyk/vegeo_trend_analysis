@@ -6,7 +6,7 @@ import psutil
 import pathlib
 
 import json
-
+import pandas as pd
 
 
 from timeit import default_timer as timer
@@ -28,7 +28,7 @@ def dot_aligned(seq):
     m = max(dots)
     return [' '*(m - d) + s for s, d in zip(snums, dots)]
 
-def compute_distance(coor):
+def compute_distance(coor, mode='great_circle'):
     """
     Compute the distance matrix between a list of (lat, lon)
     using the custom distance of geopy on sphere
@@ -48,10 +48,66 @@ def compute_distance(coor):
     >>> array([886.48233373, 911.34709254,  76.51107868])
 
     """
-    from geopy.distance import distance
+    from geopy.distance import distance, great_circle
     from scipy.spatial.distance import pdist
-    return pdist(coor, lambda u,v: distance(u,v).km)
     
+    t0 = timer()
+
+    # slower but more precise
+    if mode=='precise':
+        d = pdist(coor, lambda u,v: distance(u,v).km)
+    
+        print('t0', timer()-t0)
+        t0 = timer()
+
+    # faster but less than 1% of error
+    if mode=='great_circle':
+        d = pdist(coor, lambda u,v: great_circle(u,v).km)
+    
+        print('t1', timer()-t0)
+        t0 = timer()
+
+    return d
+    
+def compute_distance2(coor):
+    """
+    numpy version of the geopy 'great_circle' distance algorithm
+    
+    Notes
+    -----
+    30x faster with 200pts
+    10x faster with 725pts
+    Be careful to the combinations that may grow faster and slow down
+    the process for bigger number.
+    """
+    import itertools as it
+   
+    combin = np.array(list(it.combinations(range(coor.shape[0]), 2)))
+
+    coor = np.radians(coor)[combin]
+
+    #print(coor.shape)
+
+    lat1 = coor[:,0,0]
+    lng1 = coor[:,0,1]
+    lat2 = coor[:,1,0]
+    lng2 = coor[:,1,1]
+
+    sin_lat1, cos_lat1 = np.sin(lat1), np.cos(lat1)
+    sin_lat2, cos_lat2 = np.sin(lat2), np.cos(lat2)
+
+    delta_lng = lng2 - lng1
+    cos_delta_lng, sin_delta_lng = np.cos(delta_lng), np.sin(delta_lng)
+
+    EARTH_RADIUS = 6371.009
+    #EARTH_RADIUS = 1./np.pi # debug
+    d = np.arctan2(np.sqrt((cos_lat2 * sin_delta_lng) ** 2 +
+                   (cos_lat1 * sin_lat2 -
+                    sin_lat1 * cos_lat2 * cos_delta_lng) ** 2),
+              sin_lat1 * sin_lat2 + cos_lat1 * cos_lat2 * cos_delta_lng)
+
+    return d*EARTH_RADIUS
+
 
 def read_lowlevelAPI_h5py(fname, dname, pts, resol):
     '''
@@ -229,7 +285,51 @@ def test_supersites(fpath, slices):
             data = h5f['LAI'][:]
             for ii,s in enumerate(slices):
                 res = data[s]
-        
+    
+
+def load_landval_sites(fpath, nsub):
+    df = pd.read_csv(fpath, sep=';', index_col=0)
+
+    #print(df) 
+    #print(list(df))
+
+    site_coor = df[['LATITUDE', 'LONGITUDE']].to_numpy()[:nsub]
+    #print(site_coor)
+
+    #d0 = compute_distance(site_coor)
+    
+    t0 = timer()
+
+    d2 = compute_distance2(site_coor)
+
+    print('t2', timer()-t0)
+    t0 = timer()
+
+    #print("d0:", d0.min())
+    print("d2:", d2.min())
+
+    plot_dist(d2, len(site_coor))
+
+    sys.exit()
+
+
+def plot_dist(dist, n):
+    import matplotlib.pyplot as plt
+
+    img = np.zeros((n,n))
+
+    ## Add threshold
+    dist[dist<6] = 1e5
+    #dist[dist>=6] /= 1000
+
+    off = 0
+    for i in range(n-1):
+        img[i,i+1:] = dist[off:off+n-1-i]
+        off += n-1-i
+
+    plt.imshow(img)
+    plt.savefig('res_dist.png', dpi=800)
+
 
 def load_supersite_coor(fpath, nsub):
     with open(fpath) as f:
@@ -288,9 +388,12 @@ def main():
 
     process = psutil.Process(os.getpid())
     
-    ## Load nsub supersite coordinates
-    nsub = 200
-    site_coor = load_supersite_coor(root_path/'ALBEDOVAL2-database-20150630.json', nsub)
+    ## Load nsub validation sites coordinates
+    nsub = 1000
+    #site_coor = load_supersite_coor(root_path/'ALBEDOVAL2-database-20150630.json', nsub)
+    site_coor = load_landval_sites('LANDVAL2.csv', nsub)
+    #site_coor = load_landval_sites('LANDVAL2_short.csv', nsub) # test
+    #site_coor = load_landval_sites('LANDVAL2_test.csv', nsub) # test
 
     ## Convert  to slices
     resol = '1km'
