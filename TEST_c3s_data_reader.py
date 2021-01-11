@@ -13,8 +13,6 @@ from timeit import default_timer as timer
 
 
 
-
-
 def print_proc_info():
     global process 
     print('**Memory: {} Mo'.format(process.memory_info().rss/1024/1024))
@@ -148,12 +146,14 @@ def read_lowlevelAPI_h5py(fname, dname, pts, resol):
     ## data type in h5 file: H5T_STD_U16LE
     
     if 1:
-        res_size = (pts.shape[0], 2*off, 2*off)
+        ## Get a data set of hyperslab size only
+        #res_size = (pts.shape[0], 2*off, 2*off)
+        res_size = (pts.shape[0] * 2*off * 2*off,)
         mspace = h5py.h5s.create_simple(res_size)
         read_data = np.zeros(res_size, dtype=np.uint16)
         dset_id.read(mspace, filespace, read_data)
     else:
-        # read simply all : ok
+        ## read simply all, zero everywhere, hyperslab location filled with data
         read_data = np.zeros((1, 4200, 10800), dtype=np.uint16)
         #dset_id.read(h5py.h5s.ALL, h5py.h5s.ALL, read_data)
         dset_id.read(h5py.h5s.ALL, filespace, read_data)
@@ -165,6 +165,7 @@ def read_lowlevelAPI_h5py(fname, dname, pts, resol):
     file_id.close()
 
     #print(read_data)
+    return read_data
 
 
 def coor_to_index(coor, resol, fmt='slice'):
@@ -293,7 +294,8 @@ def load_landval_sites(fpath, nsub):
     #print(df) 
     #print(list(df))
 
-    site_coor = df[['LATITUDE', 'LONGITUDE']].to_numpy()[:nsub]
+    #site_coor = df[['LATITUDE', 'LONGITUDE']].to_numpy()[:nsub]
+    site_coor = df[['LATITUDE', 'LONGITUDE']].values[:nsub]
     #print(site_coor)
 
     #d0 = compute_distance(site_coor)
@@ -308,9 +310,9 @@ def load_landval_sites(fpath, nsub):
     #print("d0:", d0.min())
     print("d2:", d2.min())
 
-    plot_dist(d2, len(site_coor))
+    #plot_dist(d2, len(site_coor))
 
-    sys.exit()
+    return site_coor
 
 
 def plot_dist(dist, n):
@@ -328,7 +330,7 @@ def plot_dist(dist, n):
         off += n-1-i
 
     plt.imshow(img)
-    plt.savefig('res_dist.png', dpi=800)
+    plt.savefig('res_dist.png', dpi=100)
 
 
 def load_supersite_coor(fpath, nsub):
@@ -374,22 +376,35 @@ def load_supersite_coor(fpath, nsub):
 
     return site_coor
 
-
+def DEBUG_replace_dataset():
+    f1 = h5py.File('c3s_1km_test.nc', 'r+')  
+    data = f1['LAI']       
+    tmp = np.arange(data.size).reshape(data.shape)
+    tmp = tmp % 40320 
+    data[...] = tmp
+    #data[...] = np.ones(data.shape)
+    f1.close()                        
 
 def main():
     global process 
 
-    root = 'c3s_data'
+    #root = 'c3s_data'
+    root = '/data/c3s_pdf_live/MTDA'
     root_path = pathlib.Path(root)
 
     data = {}
     data['4km'] = ['c3s_LAI_19810920000000_GLOBE_AVHRR-NOAA7_V1.0.1.nc','c3s_LAI_19810930000000_GLOBE_AVHRR-NOAA7_V1.0.1.nc']
-    data['1km'] = ['c3s_LAI_20200403000000_GLOBE_PROBAV_V2.0.1.nc','c3s_LAI_20200413000000_GLOBE_PROBAV_V2.0.1.nc']
+    # CNRM
+    #data['1km'] = ['c3s_LAI_20200403000000_GLOBE_PROBAV_V2.0.1.nc','c3s_LAI_20200413000000_GLOBE_PROBAV_V2.0.1.nc']
+    # VITO
+    #data['1km'] = ['C3S_LAI_Global_1KM_V2/V2.0.1/2020/c3s_LAI_20200103000000_GLOBE_PROBAV_V2.0.1/c3s_LAI_20200103000000_GLOBE_PROBAV_V2.0.1.nc']
+    # debug
+    data['1km'] = ['c3s_1km_test.nc']
 
     process = psutil.Process(os.getpid())
     
     ## Load nsub validation sites coordinates
-    nsub = 1000
+    nsub = 15
     #site_coor = load_supersite_coor(root_path/'ALBEDOVAL2-database-20150630.json', nsub)
     site_coor = load_landval_sites('LANDVAL2.csv', nsub)
     #site_coor = load_landval_sites('LANDVAL2_short.csv', nsub) # test
@@ -409,25 +424,36 @@ def main():
     for d in data[resol]:
 
         fname = (root_path/d).as_posix()
+        fname = d
 
         print_proc_info()
 
         #test_toulouse(fname)
 
         ## M3
-        read_lowlevelAPI_h5py(fname, 'LAI', landval_data, resol)
+        print('h5py low level api based reader...')
+        res = read_lowlevelAPI_h5py(fname, 'LAI', landval_data, resol)
+
+        #print(res[:5])
+        #print((res-res[:,0,0][:,None,None])[:5])
+        print(res.reshape(nsub,-1))
+        #print((res-res[:,0,0][:,None,None])[:5])
 
         print('t3', timer()-t0)
         t0 = timer()
 
-        ## M1 and M2
-        test_supersites(fname, landval_slice)
-        
-        print('t1', timer()-t0)
-        t0 = timer()
+        if 0:
+            ## M1 and M2
+            print('h5py high level api based reader...')
+            test_supersites(fname, landval_slice)
+            
+            print('t1', timer()-t0)
+            t0 = timer()
 
 
     print_proc_info()
 
 if __name__=='__main__':
     main()
+    
+    #DEBUG_replace_dataset()
