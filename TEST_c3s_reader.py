@@ -113,6 +113,13 @@ def read_lowlevelAPI_h5py(fname, dname, pts, resol):
     '''
     Use h5py low-API to read hyperslab
     https://support.hdfgroup.org/ftp/HDF5/examples/python/hdf5examples-py/low_level/h5ex_d_hyper.py
+    
+    M3 method:
+    Use hyperslab to read in one time all the regions. Fast, but see below for problems.
+
+    * Problem with hyperslab: it's stil the fastest to use hyperslab, but hyperslab blocks
+    are sorted by lat then lon (to be efficiently read in the file) and so it may yield
+    mixed data when regions share same lat or overlap.
     '''
 
     if resol=='4km': off = 2 # temporary for test, should be 0
@@ -176,6 +183,15 @@ def read_lowlevelAPI_h5py2(fname, dname, pts, resol):
     '''
     Use h5py low-API to read hyperslab
     https://support.hdfgroup.org/ftp/HDF5/examples/python/hdf5examples-py/low_level/h5ex_d_hyper.py
+    
+    M4 method:
+    loop on regions to read each one independantly -> as slow as using high level api
+    If necessary, we could try to reduce the number of loops creating <10 sets of not overlapping
+    regions.
+
+    * Problem with hyperslab: it's stil the fastest to use hyperslab, but hyperslab blocks
+    are sorted by lat then lon (to be efficiently read in the file) and so it may yield
+    mixed data when regions share same lat or overlap.
     '''
 
     if resol=='4km': off = 2 # temporary for test, should be 0
@@ -227,13 +243,12 @@ def read_lowlevelAPI_h5py2(fname, dname, pts, resol):
 
 
 
-
 def coor_to_index(df, resol, fmt='slice'):
     """
     Parameters
     ----------
 
-    coor : list of (lat, lon) pair in decimal degree
+    df : pandas DataFrame with at least LATITUDE and LONGITUDE columns pair in decimal degree
 
     resol : string among '4km', '1km', '300m'
 
@@ -264,13 +279,11 @@ def coor_to_index(df, resol, fmt='slice'):
     ilat, ilon = df[['ilat', 'ilon']].values.T
     diff = np.abs(np.diff(ilat)+np.diff(ilon))
 
-    print(diff)
+    #print(diff)
 
     df = df[np.append([True],diff>10000)]
 
-    print(df)
-
-    #sys.exit()
+    #print(df)
 
     ## Make a bounding box around the coordinate
     if fmt=='slice':
@@ -366,6 +379,9 @@ def test_supersites_M2(fpath, slices):
     
 
 def load_landval_sites(fpath, nsub):
+    """
+    Load reference sites where to perform quality monitoring
+    """
     df = pd.read_csv(fpath, sep=';', index_col=0)
 
     #df.sort_values(by=['LATITUDE'], ascending=False, inplace=True)
@@ -411,6 +427,10 @@ def plot_dist(dist, n):
 
 
 def load_supersite_coor(fpath, nsub):
+    """
+    Load supersites from https://savs.eumetsat.int/index_report.html 
+    Just for test, not use in prod. See load_landval_sites()
+    """
     with open(fpath) as f:
         landval = json.load(f)
 
@@ -519,7 +539,6 @@ def main():
             
         ## M3
         print('h5py low level api based reader...')
-        print(landval_data)
         res = read_lowlevelAPI_h5py(fname, 'LAI', landval_data, resol)
         ti('t3')
 
