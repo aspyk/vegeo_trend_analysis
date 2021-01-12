@@ -8,10 +8,9 @@ import pathlib
 import json
 import pandas as pd
 
-
 from timeit import default_timer as timer
 
-
+from tools import SimpleTimer
 
 def print_proc_info():
     global process 
@@ -107,6 +106,9 @@ def compute_distance2(coor):
     return d*EARTH_RADIUS
 
 
+#=============================================================
+
+
 def read_lowlevelAPI_h5py(fname, dname, pts, resol):
     '''
     Use h5py low-API to read hyperslab
@@ -118,6 +120,7 @@ def read_lowlevelAPI_h5py(fname, dname, pts, resol):
     elif resol=='300m': off = 6
 
     pts -= off # remove offset to have the top left corner of the hyperslab
+    #print(pts)
     print('pts.shape:', pts.shape)
 
     fname = fname.encode()
@@ -135,11 +138,13 @@ def read_lowlevelAPI_h5py(fname, dname, pts, resol):
 
     ## Then loop on all the others and add them to the selection with H5S_SELECT_OR_F
     for start in pts[1:]:
+        #print(start)
+        #print('hyperslab block nb:', filespace.get_select_hyper_nblocks())
         filespace.select_hyperslab((0,*start), count, op=h5py.h5s.SELECT_OR)
 
 
-    print('selected points nb:', filespace.get_select_npoints())
     print('hyperslab block nb:', filespace.get_select_hyper_nblocks())
+    print('selected points nb:', filespace.get_select_npoints())
     #print(filespace.get_select_hyper_blocklist())
 
     ## Read the dataset with the previous hyperslab
@@ -167,8 +172,63 @@ def read_lowlevelAPI_h5py(fname, dname, pts, resol):
     #print(read_data)
     return read_data
 
+def read_lowlevelAPI_h5py2(fname, dname, pts, resol):
+    '''
+    Use h5py low-API to read hyperslab
+    https://support.hdfgroup.org/ftp/HDF5/examples/python/hdf5examples-py/low_level/h5ex_d_hyper.py
+    '''
 
-def coor_to_index(coor, resol, fmt='slice'):
+    if resol=='4km': off = 2 # temporary for test, should be 0
+    elif resol=='1km': off = 2
+    elif resol=='300m': off = 6
+
+    pts -= off # remove offset to have the top left corner of the hyperslab
+    print('pts.shape:', pts.shape)
+
+    fname = fname.encode()
+    dname = dname.encode()
+
+    ## Open the file.        
+    file_id = h5py.h5f.open(fname, h5py.h5f.ACC_RDONLY)
+    dset_id = h5py.h5d.open(file_id, dname)
+
+    ## First create the first hyperslab with H5S_SELECT_SET_F
+    filespace = dset_id.get_space()
+    zone_size = (2*off, 2*off)
+    count = (1, *zone_size)
+    mspace = h5py.h5s.create_simple(zone_size)
+    res_size = (pts.shape[0], *zone_size)
+    read_data = np.zeros(res_size, dtype=np.uint16)
+    
+    for i,start in enumerate(pts):
+        filespace.select_hyperslab((0,*start), count, op=h5py.h5s.SELECT_SET)
+        dset_id.read(mspace, filespace, read_data[i])
+
+        #print(start)
+        #print('hyperslab block nb:', filespace.get_select_hyper_nblocks())
+
+
+    #print('hyperslab block nb:', filespace.get_select_hyper_nblocks())
+    #print('selected points nb:', filespace.get_select_npoints())
+    #print(filespace.get_select_hyper_blocklist())
+
+    ## Read the dataset with the previous hyperslab
+    ## data type in h5 file: H5T_STD_U16LE
+    
+
+
+    filespace.close()
+    mspace.close()
+    dset_id.close()
+    file_id.close()
+
+    #print(read_data)
+    return read_data
+
+
+
+
+def coor_to_index(df, resol, fmt='slice'):
     """
     Parameters
     ----------
@@ -196,22 +256,31 @@ def coor_to_index(coor, resol, fmt='slice'):
     param = {'4km':(4200, 10800, 0), '1km':(15680, 40320, 2), '300m':('xxx', 'xxx', 6)}
     lat_len, lon_len, bbox_off = param[resol]
     ## Convert lat/lon to array indices
-    ilat = np.rint( lat_len * (1-(coor.T[0]+ 60)/140) ) # data from -60 to +80 deg lat
-    ilon = np.rint( lon_len *    (coor.T[1]+180)/360  ) # data from -180 to 180 deg lon
+    df['ilat'] = np.rint( lat_len * (1-(df.LATITUDE + 60)/140) ).astype(int) # data from -60 to +80 deg lat
+    df['ilon'] = np.rint( lon_len *    (df.LONGITUDE+180)/360  ).astype(int) # data from -180 to 180 deg lon
     
-    res_idx = np.array((ilat,ilon)).T.astype(int)
+    df.sort_values(by=['ilat', 'ilon'], inplace=True)
 
-    print("global:", lat_len, lon_len, "reduced:", int(ilat.max()-ilat.min()), int(ilon.max()-ilon.min()))
+    ilat, ilon = df[['ilat', 'ilon']].values.T
+    diff = np.abs(np.diff(ilat)+np.diff(ilon))
+
+    print(diff)
+
+    df = df[np.append([True],diff>10000)]
+
+    print(df)
+
+    #sys.exit()
 
     ## Make a bounding box around the coordinate
     if fmt=='slice':
         if bbox_off==0: 
-            res_slice = [(0, ilat, ilon) for (ilat,ilon) in res_idx]
+            res_slice = [(0, lat, lon) for lat,lon in df[['ilat', 'ilon']].values]
         else:
-            res_slice = [(0, slice(ilat-bbox_off, ilat+bbox_off), slice(ilon-bbox_off, ilon+bbox_off)) for (ilat,ilon) in res_idx]
+            res_slice = [(0, slice(lat-bbox_off, lat+bbox_off), slice(lon-bbox_off, lon+bbox_off)) for lat,lon in df[['ilat', 'ilon']].values]
         return res_slice
     else:
-        return res_idx
+        return df[['ilat', 'ilon']].values
 
 
 
@@ -256,53 +325,61 @@ def test_toulouse(fpath):
     print_proc_info()
 
 
-def test_supersites(fpath, slices):
+def test_supersites_M1(fpath, slices):
     """
     Test to read 100 supersites in a file:
     - M1: read directly each sites on disk with h5py high level api
     - M2: load all data in memory and select afterward in numpy
     - M3: read directly each site on disk with h5py low level api
 
+    ON SXVGEO:
     4km:
         M1 : selection = ~3.5s
         M2 : load = ~1.5s, selection = 0.015s
-        M3 : TODO (point selection not yet implemented)
+        M3 :  TODO (point selection not yet implemented)
 
     1km:
-        M1 : selection = ~10s
+        M1 : s election = ~10s
         M2 : load = ~15s, selection = 0.015s
         M3 : selection = ~2.7s
+
+
+    On VITO VM
+        M2 pass to ~3.6s for a full load, so it's become better in comparison
+    to problem with h5py low level.
+        -> for now, use M2 at VITO
+
+    * Problem with hyperslab: it's stil the fastest to use hyperslab, but hyperslab blocks
+    are sorted by lat then lon (to be efficiently read in the file) and so it may yield
+    mixed data when regions share same lat or overlap.
     """
     with h5py.File(fpath, 'r') as h5f:
-
         print_proc_info()
-
-        # M1
-        if 1: 
-            res = np.array([h5f['LAI'][s] for s in slices])
+        res = np.array([h5f['LAI'][s] for s in slices])
         
-        # M2
-        else:
-            data = h5f['LAI'][:]
-            for ii,s in enumerate(slices):
-                res = data[s]
+def test_supersites_M2(fpath, slices):
+    with h5py.File(fpath, 'r') as h5f:
+        data = h5f['LAI'][:]
+        res = np.zeros((len(slices),4,4))
+        for ii,s in enumerate(slices):
+             res[ii] = data[s]
     
 
 def load_landval_sites(fpath, nsub):
     df = pd.read_csv(fpath, sep=';', index_col=0)
 
-    #print(df) 
-    #print(list(df))
+    #df.sort_values(by=['LATITUDE'], ascending=False, inplace=True)
 
     #site_coor = df[['LATITUDE', 'LONGITUDE']].to_numpy()[:nsub]
-    site_coor = df[['LATITUDE', 'LONGITUDE']].values[:nsub]
+    #site_coor = df[['LATITUDE', 'LONGITUDE']].values[:nsub]
+    site_coor = df[:nsub]
     #print(site_coor)
 
     #d0 = compute_distance(site_coor)
     
     t0 = timer()
 
-    d2 = compute_distance2(site_coor)
+    d2 = compute_distance2(df[['LATITUDE', 'LONGITUDE']].values)
 
     print('t2', timer()-t0)
     t0 = timer()
@@ -404,7 +481,7 @@ def main():
     process = psutil.Process(os.getpid())
     
     ## Load nsub validation sites coordinates
-    nsub = 15
+    nsub = 200
     #site_coor = load_supersite_coor(root_path/'ALBEDOVAL2-database-20150630.json', nsub)
     site_coor = load_landval_sites('LANDVAL2.csv', nsub)
     #site_coor = load_landval_sites('LANDVAL2_short.csv', nsub) # test
@@ -412,7 +489,7 @@ def main():
 
     ## Convert  to slices
     resol = '1km'
-    landval_slice = coor_to_index(site_coor, resol)
+    landval_slice = coor_to_index(site_coor, resol, fmt='slice')
     landval_data = coor_to_index(site_coor, resol, fmt='hyperslab')
 
     #print(np.sort(landval_data, axis=0))
@@ -420,7 +497,8 @@ def main():
     ## test value
     #landval_data = np.array([[600,600], [601,601]])
 
-    t0 = timer()
+    #t0 = timer()
+    ti = SimpleTimer()
     for d in data[resol]:
 
         fname = (root_path/d).as_posix()
@@ -430,28 +508,29 @@ def main():
 
         #test_toulouse(fname)
 
+        ti('t0')
+        
+        ## M1 and M2
+        print('h5py high level api based reader...')
+        test_supersites_M1(fname, landval_slice)
+        ti('t1')
+        test_supersites_M2(fname, landval_slice)
+        ti('t2')
+            
         ## M3
         print('h5py low level api based reader...')
+        print(landval_data)
         res = read_lowlevelAPI_h5py(fname, 'LAI', landval_data, resol)
+        ti('t3')
 
-        #print(res[:5])
-        #print((res-res[:,0,0][:,None,None])[:5])
-        print(res.reshape(nsub,-1))
-        #print((res-res[:,0,0][:,None,None])[:5])
+        res = read_lowlevelAPI_h5py2(fname, 'LAI', landval_data, resol)
+        
+        ti('t4')
 
-        print('t3', timer()-t0)
-        t0 = timer()
-
-        if 0:
-            ## M1 and M2
-            print('h5py high level api based reader...')
-            test_supersites(fname, landval_slice)
-            
-            print('t1', timer()-t0)
-            t0 = timer()
 
 
     print_proc_info()
+    ti.show()
 
 if __name__=='__main__':
     main()
