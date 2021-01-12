@@ -22,8 +22,9 @@ import numpy as np
 import h5py
 from netCDF4 import Dataset
 import sys
-from os import getpid
+import os
 import re
+import fnmatch
 import glob
 import traceback
 from timeit import default_timer as timer
@@ -46,6 +47,8 @@ class TimeSeriesExtractor():
         (self.output_path / self.product).mkdir(parents=True, exist_ok=True)
 
         self.dseries = pd.date_range(self.start, self.end, freq=self.config['freq'])
+
+        self.mode = self.config['type']
         
 
     def get_lw_mask(self):
@@ -206,24 +209,84 @@ class TimeSeriesExtractor():
             ax.set_title('{} - {}'.format(self.product, self.dseries[i].isoformat()))
             plt.savefig(out_path+'/res{1}_{0:03d}_{2}.png'.format(i, self.hash, self.product))
  
-    def get_product_files(self):
-        for date in self.dseries:
-            ## merge root dir with substituted template
-            file_name = pathlib.Path(self.config['root']) / date.strftime(self.config['template'])
-            print(file_name)
-            # Note: the with/yield pattern should be checked to see if files are corectly closed
-            try:
-                with h5py.File(file_name, 'r') as h5f:
-                    yield h5f
-            except Exception:
-                #traceback.print_exc()
-                print ('File not found, moving to next file, assigning NaN to extacted pixel.')
-                yield None
+    def get_product_files(self, mode='msg'):
+        """
+        Generator that yield recursively open H5 file between two dates
 
-    
-    def extract_product(self, h5f, chunk):
-        prod_chunk = h5f[self.config['var']][chunk.get_limits('global', 'slice')] # array of int
+        Parameters
+        ----------
+
+        mode : string, 'msg' or 'c3s'
+            - 'msg' is used to load daily/hourly MSG files with predictable filename
+            - 'c3s' is used to load not easily predictable names and so 'walk' in subdirs of roots
+            to find relevant files.
+        """
+        if self.mode=='msg':
+            for date in self.dseries:
+                ## merge root dir with substituted template
+                file_name = pathlib.Path(self.config['root']) / date.strftime(self.config['template'])
+                print(file_name)
+                # Note: the with/yield pattern should be checked to see if files are corectly closed
+                try:
+                    with h5py.File(file_name, 'r') as h5f:
+                        yield h5f
+                except Exception:
+                    #traceback.print_exc()
+                    print ('File not found, moving to next file, assigning NaN to extacted pixel.')
+                    yield None
         
+        elif self.mode=='c3s':
+            # TODO
+
+            ## Get year min and year max from start and end
+            ymin = self.start.year
+            ymax = self.end.year
+
+            print(ymin, ymax)
+
+            ## Find in the subdir all the *.nc files and save as [datetime, file path]
+            flist = []
+            for y in range(ymin, ymax+1):
+                for dp, dn, fn in os.walk((pathlib.Path(self.config['root'])/str(y)).as_posix()):
+                    if len(fn)>0:
+                        ncfile = fnmatch.filter(fn, '*.nc')[0]
+                        # Use regex to catch the date in the filename:
+                        # starts with '_' followed by a 1 or 2
+                        # then between 7 and 13 digits and a final '_'
+                        p = re.compile('_[12]\d{7,13}_')
+                        m = p.search(ncfile)
+                        date_str = m.group()[1:-1]
+                        if len(date_str[8:])==6:
+                            pattern = "%H%M%S"
+                        elif len(date_str[8:])==4:
+                            pattern = "%H%M"
+                        date_obj = datetime.strptime(date_str, "%Y%m%d"+pattern)
+                        flist.append([date_obj, pathlib.Path(dp) / ncfile])
+
+            ## Trim the dates using start and end in a DataFrame
+            df = pd.DataFrame(flist, columns=['datetime','path'])
+            df = df.set_index('datetime') 
+            df = df.sort_index().loc[self.start:self.end]
+
+            ## Loop on these files and yield
+            for file_name in df['path']:
+                print(file_name)
+                # Note: the with/yield pattern should be checked to see if files are corectly closed
+                try:
+                    with h5py.File(file_name, 'r') as h5f:
+                        yield h5f
+                except Exception:
+                    #traceback.print_exc()
+                    print ('File not found, moving to next file, assigning NaN to extacted pixel.')
+                    yield None
+
+
+    def extract_product(self, h5f, chunk):
+        if self.mode=='msg':
+            prod_chunk = h5f[self.config['var']][chunk.get_limits('global', 'slice')] # array of int
+        elif self.mode=='c3s':
+            prod_chunk = h5f[self.config['var']][0][chunk.get_limits('global', 'slice')] # array of int
+       
         ## remove invalid data
         if self.product=='lai':
             prod_chunk = np.where(prod_chunk==-10, np.nan, prod_chunk/1000.)            
@@ -232,20 +295,24 @@ class TimeSeriesExtractor():
     
 
     def run(self):
-        self.get_lw_mask()
+        b_use_mask = 0
+
+        if b_use_mask: self.get_lw_mask()
        
         ## Loop on chunks
         for chunk in self.chunks.list:
             t0 = timer()
             print('***', 'SIZE (y,x)=(row,col)=({},{})'.format(*chunk.dim), 'GLOBAL_LOCATION=[{}:{},{}:{}]'.format(*chunk.get_limits('global', 'str')))
+            
             ## Initialize an array series with nan
             tseries = np.full([len(self.dseries), *chunk.dim], np.nan)
             print(tseries.shape)
     
             ## Create the chunk mask
-            lwmsk_chunk = self.lwmsk[chunk.get_limits('local', 'slice')]
-            ocean = np.where(lwmsk_chunk==0)
-            land = np.where(lwmsk_chunk==1)
+            if b_use_mask: 
+                lwmsk_chunk = self.lwmsk[chunk.get_limits('local', 'slice')]
+                ocean = np.where(lwmsk_chunk==0)
+                land = np.where(lwmsk_chunk==1)
     
             res = [] # debug
 

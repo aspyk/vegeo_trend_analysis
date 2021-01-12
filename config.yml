@@ -11,9 +11,22 @@ lst_nrt:
     freq: '15T'
 
 lai:
-    root: '/cnrm/vegeo/SAT/DATA/MSG_LAI_DAILY_CDR'
-    template: 'HDF5_LSASAF_MSG_LAI_MSG-Disk_%Y%m%d0000'
-    freq: '1D'
+ #    root: '/cnrm/vegeo/SAT/DATA/MSG_LAI_DAILY_CDR'
+ #    template: 'HDF5_LSASAF_MSG_LAI_MSG-Disk_%Y%m%d0000'
+ #    freq: '1D'
+ #    var: 'LAI'
+ #
+ #  On VITO VM:
+ #  C3S_LAI_Global_1KM_V0 (1999 -> 2020)
+ #  C3S_LAI_Global_1KM_V1/V1.0.1 (1998 -> 2014)
+ #  C3S_LAI_Global_1KM_V2/V2.0.1 (2013 -> 2020)
+ #  C3S_LAI_Global_4KM_V1/V1.0.1 (1981 -> 2005)
+ #  Note: template is not used in 'c3s' mode
+    type: 'c3s'
+ #  root: '/data/c3s_pdf_live/MTDA/C3S_LAI_Global_1KM_V0'
+    root: '/data/c3s_pdf_live/MTDA/C3S_LAI_Global_1KM_V2/V2.0.1'
+    template: '---'
+    freq: '10D'
     var: 'LAI'
 
 evapo:

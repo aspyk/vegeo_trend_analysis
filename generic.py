@@ -98,7 +98,7 @@ def plot2Darray(v, var='var'):
     plt.imshow(v)
     imgname = 'h52img_{0}.png'.format(var)
     plt.savefig(imgname)
-    print(f'Saved to {imgname}.')
+    print('Saved to {}.'.format(imgname))
     os.system('/mnt/lfs/d30/vegeo/fransenr/CODES/tools/TerminalImageViewer/src/main/cpp/tiv ' + imgname)
 
 

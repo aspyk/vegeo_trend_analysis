@@ -16,11 +16,13 @@ def parse_args():
     parser = argparse.ArgumentParser(description='The parameters are being given as arguments for input time series,', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('-t0','--start_date',
                         help='start date (ISO format %%Y-%%m-%%d) for reading of time series.',
-                        type=lambda s: datetime.date.fromisoformat(s),
+                        #type=lambda s: datetime.date.fromisoformat(s), # on new versions of datetime
+                        type=lambda s: datetime.datetime.strptime(s, '%Y-%m-%d'), # old version
                         required=True)    
     parser.add_argument('-t1','--end_date',
                         help='end date (ISO format %%Y-%%m-%%d) for reading of time series.',
-                        type=lambda s: datetime.date.fromisoformat(s),
+                        #type=lambda s: datetime.date.fromisoformat(s), # on new versions of datetime
+                        type=lambda s: datetime.datetime.strptime(s, '%Y-%m-%d'), # old version
                         required=True)    
     parser.add_argument('-p','--product_tag',
                         help='product tag or product dataset',
