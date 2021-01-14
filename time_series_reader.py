@@ -14,23 +14,21 @@ LDFLAGS=-shared f2py -c mk_fortran.f90 -m mankendall_fortran_repeat_exp2 --fcomp
 
 """
 
-from datetime import datetime
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 import numpy as np
-import h5py
 from netCDF4 import Dataset
-import sys
-import os
+import h5py # import after netCDF4 otherwise 'RuntimeError: NetCDF: HDF error' on VITO VM
+from datetime import datetime
+import os,sys
 import re
 import fnmatch
-import glob
 import traceback
 from timeit import default_timer as timer
 import generic
 import pathlib
-from string import Template
 
 
 class TimeSeriesExtractor():
@@ -46,9 +44,11 @@ class TimeSeriesExtractor():
         self.output_path = pathlib.Path(config['output_path']['extract'])
         (self.output_path / self.product).mkdir(parents=True, exist_ok=True)
 
+        self.mode = self.config['mode']
+        
         self.dseries = pd.date_range(self.start, self.end, freq=self.config['freq'])
 
-        self.mode = self.config['type']
+        self.source = self.config['source']
         
 
     def get_lw_mask(self):
@@ -124,7 +124,7 @@ class TimeSeriesExtractor():
         
         return var
  
-    def write_ts_chunk(self, chunk, tseries):
+    def _write_ts_chunk(self, chunk, tseries):
         """Write time series of the data for each master iteration"""
         write_file = self.output_path / self.product / (self.hash+'_timeseries_'+'_'.join(chunk.get_limits('global', 'str'))+'.nc')
         write_file = write_file.as_posix()
@@ -133,9 +133,12 @@ class TimeSeriesExtractor():
         
         nc_iter.createDimension('x', tseries.shape[0])
         nc_iter.createDimension('y', tseries.shape[1])
-        nc_iter.createDimension('z', tseries.shape[2])
+        if chunk.input=='box':
+            nc_iter.createDimension('z', tseries.shape[2])
+            nc_iter.createVariable('time_series_chunk', np.float, ('x','y','z'), zlib=True)
+        else:
+            nc_iter.createVariable('time_series_chunk', np.float, ('x','y'), zlib=True)
         
-        var1 = nc_iter.createVariable('time_series_chunk', np.float, ('x','y','z'), zlib=True)
         nc_iter.variables['time_series_chunk'][:] = tseries
             
         nc_iter.close()
@@ -209,19 +212,19 @@ class TimeSeriesExtractor():
             ax.set_title('{} - {}'.format(self.product, self.dseries[i].isoformat()))
             plt.savefig(out_path+'/res{1}_{0:03d}_{2}.png'.format(i, self.hash, self.product))
  
-    def get_product_files(self, mode='msg'):
+    def get_product_files(self, mode='predict'):
         """
         Generator that yield recursively open H5 file between two dates
 
         Parameters
         ----------
 
-        mode : string, 'msg' or 'c3s'
-            - 'msg' is used to load daily/hourly MSG files with predictable filename
-            - 'c3s' is used to load not easily predictable names and so 'walk' in subdirs of roots
+        mode : string, 'predict' or 'walk'
+            - 'predict' is used to load daily/hourly files with predictable filename
+            - 'walk' is used to load not easily predictable names and so 'walk' in subdirs of roots
             to find relevant files.
         """
-        if self.mode=='msg':
+        if self.mode=='predict':
             for date in self.dseries:
                 ## merge root dir with substituted template
                 file_name = pathlib.Path(self.config['root']) / date.strftime(self.config['template'])
@@ -235,9 +238,7 @@ class TimeSeriesExtractor():
                     print ('File not found, moving to next file, assigning NaN to extacted pixel.')
                     yield None
         
-        elif self.mode=='c3s':
-            # TODO
-
+        elif self.mode=='walk':
             ## Get year min and year max from start and end
             ymin = self.start.year
             ymax = self.end.year
@@ -282,11 +283,68 @@ class TimeSeriesExtractor():
 
 
     def extract_product(self, h5f, chunk):
-        if self.mode=='msg':
+        if self.source=='msg':
             prod_chunk = h5f[self.config['var']][chunk.get_limits('global', 'slice')] # array of int
-        elif self.mode=='c3s':
-            prod_chunk = h5f[self.config['var']][0][chunk.get_limits('global', 'slice')] # array of int
-       
+        
+        elif self.source=='c3s':
+            
+            if chunk.input=='box':
+                chunk_range = (0, *chunk.get_limits('global', 'slice')) # array of int
+                prod_chunk = h5f[self.config['var']][chunk_range] # array of int
+            
+            elif chunk.input=='points':
+                # Product
+                data = h5f[self.config['var']][:]
+                #data = h5f['retrieval_flag'][:]
+                prod_chunk = np.zeros((*chunk.dim, 2*chunk.box_offset, 2*chunk.box_offset), dtype=np.uint16)
+                for ii,s in enumerate(chunk.get_limits('global', 'slice')):
+                    prod_chunk[ii] = data[s]
+                del(data)
+
+
+                ## DEBUG: Plot landval
+                if 0:
+                    fig = plt.figure()
+                    ax = fig.add_subplot(111)
+                    
+                    #data = data.astype(np.float)
+                    print(data.min(), data.max())
+                    #data = data & 0xFC1
+                    print(data.min(), data.max())
+                    for ii,s in enumerate(chunk.get_limits('global', 'slice')):
+                        data[s] = 2e3
+                    cm = 'jet'
+                    cm = 'gist_ncar'
+                    mat = ax.imshow(data[0,::2,::2], cmap=cm)
+                    #mat = ax.imshow(data[0], cmap=cm)
+                    # create an axes on the right side of ax. The width of cax will be 5%
+                    # of ax and the padding between cax and ax will be fixed at 0.05 inch.
+                    divider = make_axes_locatable(ax)
+                    cax = divider.append_axes("right", size="5%", pad=0.05)
+                    plt.colorbar(mat, cax=cax) 
+
+                    #plt.savefig('res_c3s.png')
+                    plt.show()
+
+                    sys.exit()
+                    ## END DEBUG
+
+                # Quality
+                data = h5f['retrieval_flag'][:]
+                q_chunk = np.zeros((*chunk.dim,4,4), dtype=np.uint32)
+                for ii,s in enumerate(chunk.get_limits('global', 'slice')):
+                    q_chunk[ii] = data[s]
+                del(data)
+                ## Agregate data using quality flag
+                # TODO: if more than 75% of the matrix is ok agregate
+
+                # See Appendix A of D3.3.8-v2.1_PUGS_CDR-ICDR_LAI_FAPAR_PROBAV_v2.0_PRODUCTS_v1.1.pdf
+                q_mask = (q_chunk & 0xFC1 ) == 0
+                # Count True in each window and keep only when 75% is ok
+                q_mask = np.count_nonzero(q_mask, axis=(1,2)) >= 12  # 12 for 4x4 windows and 108 for 12x12 
+                print('non_zero q_mask: {0} / {1}'.format(np.count_nonzero(q_mask), *chunk.dim) )
+                prod_chunk = prod_chunk.mean(axis=(1,2))
+
         ## remove invalid data
         if self.product=='lai':
             prod_chunk = np.where(prod_chunk==-10, np.nan, prod_chunk/1000.)            
@@ -302,8 +360,11 @@ class TimeSeriesExtractor():
         ## Loop on chunks
         for chunk in self.chunks.list:
             t0 = timer()
-            print('***', 'SIZE (y,x)=(row,col)=({},{})'.format(*chunk.dim), 'GLOBAL_LOCATION=[{}:{},{}:{}]'.format(*chunk.get_limits('global', 'str')))
-            
+            if chunk.input=='box':
+                print('***', 'SIZE (y,x)=(row,col)=({},{})'.format(*chunk.dim), 'GLOBAL_LOCATION=[{}:{},{}:{}]'.format(*chunk.get_limits('global', 'str')))
+            elif chunk.input=='points':
+                print('***', 'SIZE {} points'.format(*chunk.dim))
+
             ## Initialize an array series with nan
             tseries = np.full([len(self.dseries), *chunk.dim], np.nan)
             print(tseries.shape)
@@ -321,7 +382,7 @@ class TimeSeriesExtractor():
                 for h5index, h5file in enumerate(self.get_product_files()):
                     if h5file is not None:
                         print(h5index, 'OK')
-                        tseries[h5index,:] = self.extract_product(h5file, chunk)
+                        tseries[h5index] = self.extract_product(h5file, chunk)
 
             # debug
             if 0:
@@ -335,7 +396,7 @@ class TimeSeriesExtractor():
 
             print(timer()-t0)
     
-            self.write_ts_chunk(chunk, tseries)
+            self._write_ts_chunk(chunk, tseries)
             #self.plot_histogram(tseries)
             #self.plot_image_series(tseries)
    

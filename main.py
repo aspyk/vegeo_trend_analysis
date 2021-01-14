@@ -8,6 +8,13 @@ import pathlib
 import generic
 import yaml
 
+class ParseInput():
+    def __init__(self, input_string):
+        self.type = input_string.split(':')[0]
+        self.param = input_string.split(':')[1].split(',')
+        if len(self.param)==1:
+            self.param = self.param[0]
+        
 
 def parse_args():
     
@@ -17,26 +24,25 @@ def parse_args():
     parser.add_argument('-t0','--start_date',
                         help='start date (ISO format %%Y-%%m-%%d) for reading of time series.',
                         #type=lambda s: datetime.date.fromisoformat(s), # on new versions of datetime
-                        type=lambda s: datetime.datetime.strptime(s, '%Y-%m-%d'), # old version
+                        type=lambda s: datetime.datetime.strptime(s, '%Y-%m-%d'), # legacy version
                         required=True)    
     parser.add_argument('-t1','--end_date',
                         help='end date (ISO format %%Y-%%m-%%d) for reading of time series.',
                         #type=lambda s: datetime.date.fromisoformat(s), # on new versions of datetime
-                        type=lambda s: datetime.datetime.strptime(s, '%Y-%m-%d'), # old version
+                        type=lambda s: datetime.datetime.strptime(s, '%Y-%m-%d'), # legacy version
                         required=True)    
     parser.add_argument('-p','--product_tag',
                         help='product tag or product dataset',
                         choices=['albedo', 'lai', 'evapo', 'dssf', 'lst'],
                         nargs='+',
                         required=True)    
-    groupz = parser.add_mutually_exclusive_group(required=True)
-    groupz.add_argument('-zc','--zone_coor',
-                        help='Zone to be analysed. Given as <xmin xmax ymin ymax> as the boundary box coordinates.',
-                        nargs='+',
-                        type=int) 
-    groupz.add_argument('-zn','--zone_name',
-                        help='Zone to be analysed. Given as a name in {0}.'.format(', '.join(zone_names)),
-                        choices=zone_names)
+    parser.add_argument('-i','--input',
+                        help='input type and parameter(s), use format <type>:<param1>,<param2>... \n \
+                              box:<xmin,xmax,ymin,ymax> \n \
+                              alias:<{0}> \n \
+                              latloncsv:<path_to_csv_file>'.format('|'.join(zone_names)),
+                        type=ParseInput,
+                        required=True)    
     parser.add_argument('-a','--action',
                         help='Action to run between extract, group, trend, plot',
                         choices=['extract', 'append', 'trend', 'merge', 'plot'],
@@ -83,33 +89,31 @@ def main():
         return C+s+NC
 
 
-    # pre-process arguments
+    ## pre-process arguments
     args = parse_args()
 
-
-    start_year = int(args.start_date.year)
-    end_year = int(args.end_date.year)
-    
-    start_month = int(args.start_date.month)
-    end_month = int(args.end_date.month)
     
     dic_zone = {}
-    # x1,x2,y1,y2, origin at the top left
+    # MSG disk: x1,x2,y1,y2, origin at the top left
     dic_zone['Euro'] = [1550, 3250,   50,  700]
     dic_zone['NAfr'] = [1240, 3450,  700, 1850]
     dic_zone['SAfr'] = [2140, 3350, 1850, 3040]
     dic_zone['SAme'] = [  40,  740, 1460, 2970]
     dic_zone['Fra']  = [1740, 2060,  310,  510]
     
-    if args.zone_name is not None:
-        args.zone_coor = dic_zone[args.zone_name]
+    ## Parse input format
+    if args.input.type in ['box','alias']:
+        ## Generate chunks with splitter object
+        if args.input.type=='box':
+            zone_idx = args.input.param
+        elif args.input.type=='alias':
+            zone_idx = dic_zone[args.input.param]
+        chunks = generic.Splitter(*zone_idx)
+        chunks.subdivide(args.master_chunk)
+    elif args.input.type=='latloncsv':
+        chunks = generic.CoordinatesConverter(args.input.param, resol='1km')
    
-    nmaster = args.master_chunk
    
-    # Generate chunks with splitter object
-    chunks = generic.Splitter(*args.zone_coor)
-    chunks.subdivide(nmaster)
-
     # print info
     print("Run {4} of {0} in {1} from {2} to {3}".format(green(','.join(args.product_tag)),
                                                          green(','.join(chunks.get_limits('global', 'str'))),

@@ -1,3 +1,4 @@
+import pandas as pd
 import numpy as np
 import hashlib
 from collections import namedtuple
@@ -16,6 +17,8 @@ class Splitter():
     """
 
     def __init__(self, xlim1, xlim2, ylim1, ylim2, parent=None):
+        self.input = 'box'
+
         self.x1 = xlim1
         self.x2 = xlim2
         self.y1 = ylim1
@@ -88,8 +91,85 @@ class Splitter():
                 # self.__class__ is used to instantiate recursively a new class
                 #print(col0, col1, row0, row1) 
                 self.list.append(self.__class__(col0, col1, row0, row1, self)) 
- 
 
+class CoordinatesConverter():
+    """
+    For a given format, convert a list of lat/lon pairs into :
+    - list of corresponding indices in array
+    - list of slice for area around the points
+
+    Notes
+    -----
+    This class has to use the same public methods and output formats
+    as Splitter class in order to be used independantly.
+    """
+
+    def __init__(self, fpath, resol):
+        self.fpath = fpath
+        self.c3s_resol = resol
+        self.input = 'points'
+        # return itself in a list to match Splitter format
+        self.list = [self]
+
+        ## Get the param corresponding to the resolution
+        param = {'4km':(4200, 10800, 0), '1km':(15680, 40320, 2), '300m':('xxx', 'xxx', 6)}
+        self.lat_len, self.lon_len, self.box_offset = param[self.c3s_resol]
+        
+        self._load_coor_from_csv()
+        self._coor_to_indices_c3s()
+
+    def _load_coor_from_csv(self, nsub=0):
+        """
+        Load reference sites where to perform quality monitoring from a csv file.
+        CSV file must have a LATITUDE and LONGITUDE columns.
+        """
+        df = pd.read_csv(self.fpath, sep=';', index_col=0)
+
+        if nsub>0:
+            self.site_coor = df[:nsub]
+        else:
+            self.site_coor = df
+
+       
+    def _coor_to_indices_c3s(self):
+        """
+        Notes
+        -----
+    
+        c3s data:
+        - shape is (1, lat_len, lon_len)
+        - lat extend from -60 to 80 deg
+        - lon extend from -180 to 180 deg
+        
+        Here we want to extract:
+        - 1x1 px for 4km
+        - 4x4 px for 1km
+        - 12x12 px for 300m
+        """
+        ## Convert lat/lon to array indices
+        df = self.site_coor
+        df['ilat'] = np.rint( self.lat_len * (1-(df.LATITUDE + 60)/140) ).astype(int) # data from -60 to +80 deg lat
+        df['ilon'] = np.rint( self.lon_len *    (df.LONGITUDE+180)/360  ).astype(int) # data from -180 to 180 deg lon
+        
+        df = df.sort_values(by=['ilat', 'ilon'])
+    
+        ## Make a bounding box around the coordinate
+        if self.box_offset==0: 
+            self.slice = [(0, lat, lon) for lat,lon in df[['ilat', 'ilon']].values]
+        else:
+            self.slice = [(0, slice(lat-self.box_offset, lat+self.box_offset), slice(lon-self.box_offset, lon+self.box_offset)) for lat,lon in df[['ilat', 'ilon']].values]
+        
+        self.site_coor = df
+        self.dim = (len(self.slice),)
+
+    def get_limits(self, ref, fmt):
+        if fmt=='slice':
+            return self.slice
+        elif fmt=='str':
+            # return a list to match Splitter get_limits output
+            return ['{0}pts'.format(*self.dim)]
+
+        
 
 def plot2Darray(v, var='var'):
     """Debug function to plot a 2D array in terminal"""
