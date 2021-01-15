@@ -19,7 +19,10 @@ class Main():
 
     def __init__(self):
         self.zone_names = ['Euro', 'NAfr', 'SAfr', 'SAme', 'Fra']
-        self.product_names = ['albedo', 'lai', 'evapo', 'dssf', 'lst']
+        msg_vars = ['albedo', 'lai', 'evapo', 'dssf', 'lst']
+        c3s_vars = ['albbdh','albbbh','alspdh','alspbh']
+        c3s_vars = ['c3s_'+i for i in c3s_vars]
+        self.product_names = msg_vars + c3s_vars
 
     def _parse_args(self):
         parser = argparse.ArgumentParser(description='The parameters are being given as arguments for input time series,', formatter_class=argparse.ArgumentDefaultsHelpFormatter)

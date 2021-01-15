@@ -281,35 +281,54 @@ class TimeSeriesExtractor():
                     print ('File not found, moving to next file, assigning NaN to extacted pixel.')
                     yield None
 
+    def _extract_points(self, var, dtype):
+        """
+        This version load all the dataset and extract location from memory
+        
+        Notes
+        -----
+        Timing is good if there are a lot of points and loading of data is not
+        too long. Best way should be using hyperslabs in h5py low level api
+        but there are some array manipulation do to after extraction: hyperslab
+        blocks are sorted by lat then lon (to be efficiently read in the file)
+        and so it may yield mixed data when regions share same lat or overlap.
+        """
+        chunk = self.chunk
+        data = self.h5f[var][:]
+        prod_chunk = np.zeros((*chunk.dim, 2*chunk.box_offset, 2*chunk.box_offset), dtype=dtype)
+        for ii,s in enumerate(chunk.get_limits('global', 'slice')):
+            prod_chunk[ii] = data[s]
+        del(data)
+        return prod_chunk
 
-    def extract_product(self, h5f, chunk):
+
+    def extract_product(self):
+        chunk = self.chunk
         if self.source=='msg':
-            prod_chunk = h5f[self.config['var']][chunk.get_limits('global', 'slice')] # array of int
+            prod_chunk = self.h5f[self.config['var']][chunk.get_limits('global', 'slice')] # array of int
         
         elif self.source=='c3s':
             
             if chunk.input=='box':
                 chunk_range = (0, *chunk.get_limits('global', 'slice')) # array of int
-                prod_chunk = h5f[self.config['var']][chunk_range] # array of int
+                prod_chunk = self.h5f[self.config['var']][chunk_range] # array of int
             
             elif chunk.input=='points':
                 # Product
-                data = h5f[self.config['var']][:]
-                #data = h5f['retrieval_flag'][:]
-                prod_chunk = np.zeros((*chunk.dim, 2*chunk.box_offset, 2*chunk.box_offset), dtype=np.uint16)
-                for ii,s in enumerate(chunk.get_limits('global', 'slice')):
-                    prod_chunk[ii] = data[s]
-                del(data)
-
-
+                prod_chunk = self._extract_points(self.config['var'], np.int16)
+                #q_chunk = self._extract_points('QFLAG', chunk, np.uint)
+               
                 ## DEBUG: Plot landval
                 if 0:
+                    data = h5f[self.config['var']][:]
+                    #data = h5f['retrieval_flag'][:]
+
                     fig = plt.figure()
                     ax = fig.add_subplot(111)
                     
                     #data = data.astype(np.float)
                     print(data.min(), data.max())
-                    #data = data & 0xFC1
+                    #data = data & 0xFC1 # See Appendix A of D3.3.8-v2.1_PUGS_CDR-ICDR_LAI_FAPAR_PROBAV_v2.0_PRODUCTS_v1.1.pdf
                     print(data.min(), data.max())
                     for ii,s in enumerate(chunk.get_limits('global', 'slice')):
                         data[s] = 2e3
@@ -329,20 +348,11 @@ class TimeSeriesExtractor():
                     sys.exit()
                     ## END DEBUG
 
-                # Quality
-                data = h5f['retrieval_flag'][:]
-                q_chunk = np.zeros((*chunk.dim,4,4), dtype=np.uint32)
-                for ii,s in enumerate(chunk.get_limits('global', 'slice')):
-                    q_chunk[ii] = data[s]
-                del(data)
                 ## Agregate data using quality flag
                 # TODO: if more than 75% of the matrix is ok agregate
-
-                # See Appendix A of D3.3.8-v2.1_PUGS_CDR-ICDR_LAI_FAPAR_PROBAV_v2.0_PRODUCTS_v1.1.pdf
-                q_mask = (q_chunk & 0xFC1 ) == 0
                 # Count True in each window and keep only when 75% is ok
-                q_mask = np.count_nonzero(q_mask, axis=(1,2)) >= 12  # 12 for 4x4 windows and 108 for 12x12 
-                print('non_zero q_mask: {0} / {1}'.format(np.count_nonzero(q_mask), *chunk.dim) )
+                #q_mask = np.count_nonzero(q_mask, axis=(1,2)) >= 12  # 12 for 4x4 windows and 108 for 12x12 
+                #print('non_zero q_mask: {0} / {1}'.format(np.count_nonzero(q_mask), *chunk.dim) )
                 prod_chunk = prod_chunk.mean(axis=(1,2))
 
         ## remove invalid data
@@ -359,6 +369,8 @@ class TimeSeriesExtractor():
        
         ## Loop on chunks
         for chunk in self.chunks.list:
+            self.chunk = chunk
+
             t0 = timer()
             if chunk.input=='box':
                 print('***', 'SIZE (y,x)=(row,col)=({},{})'.format(*chunk.dim), 'GLOBAL_LOCATION=[{}:{},{}:{}]'.format(*chunk.get_limits('global', 'str')))
@@ -382,7 +394,8 @@ class TimeSeriesExtractor():
                 for h5index, h5file in enumerate(self.get_product_files()):
                     if h5file is not None:
                         print(h5index, 'OK')
-                        tseries[h5index] = self.extract_product(h5file, chunk)
+                        self.h5f = h5file
+                        tseries[h5index] = self.extract_product()
 
             # debug
             if 0:

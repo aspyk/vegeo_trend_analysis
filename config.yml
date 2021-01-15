@@ -70,6 +70,21 @@ al_mdal_nrt:
     freq: '1D'
     var: 'AL-BB-DH'
 
+c3s_alspdh: #  On VITO VM:
+ #  C3S_LAI_Global_1KM_V0 (1999 -> 2020)
+ #  C3S_LAI_Global_1KM_V1/V1.0.1 (1998 -> 2014)
+ #  C3S_LAI_Global_1KM_V2/V2.0.1 (2013 -> 2020)
+ #  C3S_LAI_Global_4KM_V1/V1.0.1 (1981 -> 2005)
+    source: 'c3s'
+    root: '/data/c3s_pdf_live/MTDA/C3S_ALSP_DH_Global_1KM_V2/V2.0.1'
+    mode: 'walk'  
+    freq: '10D'
+    var: 'AL_DH_B0'
+
+
+
+ #---------------------------------------------
+
  # Dir to store cache and output
 output_path:
     extract: './output_extract'
