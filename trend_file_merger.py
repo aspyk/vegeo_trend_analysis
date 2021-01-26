@@ -57,7 +57,7 @@ def merge_trends(product, chunks, config, phash):
         tile_map_loc = np.full(chunks.dim, np.nan)
 
     ## Filter the trend files with the case hash
-    flist = os.listdir(input_path) 
+    flist = os.listdir(input_path.as_posix()) 
     filenames = fnmatch.filter(flist, '{}_CHUNK*'.format(phash))
     print("Found {} files to merge.".format(len(filenames)))
             

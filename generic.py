@@ -130,7 +130,6 @@ class CoordinatesConverter():
         else:
             self.site_coor = df
 
-       
     def _coor_to_indices_c3s(self):
         """
         Notes
@@ -160,14 +159,26 @@ class CoordinatesConverter():
             self.slice = [(0, slice(lat-self.box_offset, lat+self.box_offset), slice(lon-self.box_offset, lon+self.box_offset)) for lat,lon in df[['ilat', 'ilon']].values]
         
         self.site_coor = df
-        self.dim = (len(self.slice),)
+        
+        # Add parameters to fake 2D chunk
+        self.dim = (1, len(self.slice)) 
+        self.x1 = 0
+        self.x2 = len(self.slice)
+        self.y1 = 0
+        self.y2 = 1
 
     def get_limits(self, ref, fmt):
-        if fmt=='slice':
-            return self.slice
+        x1 = self.x1 
+        x2 = self.x2 
+        y1 = self.y1 
+        y2 = self.y2 
+        if fmt=='tuple':
+            return (x1, x2, y1, y2)
         elif fmt=='str':
-            # return a list to match Splitter get_limits output
-            return ['{0}pts'.format(*self.dim)]
+            # Use (x,y) order to print
+            return tuple([str(i) for i in [x1, x2, y1, y2]])
+        elif fmt=='slice':
+            return self.slice
 
         
 
@@ -180,7 +191,6 @@ def plot2Darray(v, var='var'):
     plt.savefig(imgname)
     print('Saved to {}.'.format(imgname))
     os.system('/mnt/lfs/d30/vegeo/fransenr/CODES/tools/TerminalImageViewer/src/main/cpp/tiv ' + imgname)
-
 
 def binned_statistic_dd(sample, values, statistic='mean',
                         bins=10, rrange=None, expand_binnumbers=False):

@@ -64,7 +64,10 @@ def processInput_trends(subchunk, parent_iteration, child_iteration):
     #print('INFO: see trend.out to monitor trend computation progress')
     #sys.stdout = open('trend.out', 'a')
 
-    print ('### Chunk {} > subchunk {} started: COL: [{}:{}] ROW: [{}:{}]'.format(parent_iteration, child_iteration, *subchunk.get_limits('local', 'str')))
+    if subchunk.input=='box':
+        print('### Chunk {} > subchunk {} started: COL: [{}:{}] ROW: [{}:{}]'.format(parent_iteration, child_iteration, *subchunk.get_limits('local', 'str')))
+    elif subchunk.input=='points':
+        print('### Chunk {} > subchunk {} started.'.format(parent_iteration, child_iteration))
 
     ## Debug tool to print process Ids
     process = psutil.Process(os.getpid())
@@ -72,8 +75,8 @@ def processInput_trends(subchunk, parent_iteration, child_iteration):
     print(process, current._identity, '{} Mo'.format(process.memory_info().rss/1024/1024))
 
     ## Check if cache file already exists and must be overwritten
-    write_string0 = (param.hash+"_CHUNK_" + np.str(parent_iteration)  
-                     + "_SUBCHUNK_" + np.str(child_iteration)   
+    write_string0 = (param.hash+"_CHUNK" + np.str(parent_iteration)  
+                     + "_SUBCHUNK" + np.str(child_iteration)   
                      + "_" + '_'.join(subchunk.get_limits('global', 'str'))
                      + '.nc')
     subchunk_fname = param.output_path / write_string0
@@ -235,10 +238,12 @@ def processInput_trends(subchunk, parent_iteration, child_iteration):
         if 0:
             t_mean += timer()-t00
             #print(f't00 {ii_sub} {t_mean/(ii_sub+1)}')
-            print(f't00.p{current._identity[0]}.it{ii_sub} {t_mean/(ii_sub+1):.3f}s {process.memory_info().rss/1024/1024:.2f}Mo')
+            #print(f't00.p{current._identity[0]}.it{ii_sub} {t_mean/(ii_sub+1):.3f}s {process.memory_info().rss/1024/1024:.2f}Mo')
+            print('t00.p{}.it{} {:.3f}s {:.2f}Mo'.format(current._identity[0], ii_sub, t_mean/(ii_sub+1), process.memory_info().rss/1024/1024))
             v = var_temp_output[ii_sub,:,:]
             for ii in range(4):
-                print(f'{np.count_nonzero(np.isnan(v[:,ii]))/v[:,ii].size:.3f}', np.nanmin(v[:,ii]), np.nanmax(v[:,ii]))
+                #print(f'{np.count_nonzero(np.isnan(v[:,ii]))/v[:,ii].size:.3f}', np.nanmin(v[:,ii]), np.nanmax(v[:,ii]))
+                print('{:.3f}'.format(np.count_nonzero(np.isnan(v[:,ii]))/v[:,ii].size), np.nanmin(v[:,ii]), np.nanmax(v[:,ii]))
             print(np.nanmin(v), np.nanmax(v))
             t00 = timer()
    
@@ -301,15 +306,19 @@ def main():
         param.input_file = param.input_path / (param.hash+'_timeseries_'+ '_'.join(chunk.get_limits('global','str'))+'.nc')
         print('> calculating trend for the chunk:') 
         print(param.input_file.as_posix())
-        print('***Row/y_SIZE***', chunk.dim[0], '***Col/x_SIZE***', chunk.dim[1]) 
+        if chunk.input=='box':
+            print('***Row/y_SIZE***', chunk.dim[0], '***Col/x_SIZE***', chunk.dim[1]) 
+            
+            # Subdivide each chunk into subchunks, the latter being then possibly multiprocessed
+            chunk.subdivide(nchild)
         
-        # Subdivide each chunk into subchunks, the latter being then possibly multiprocessed
-        chunk.subdivide(nchild)
+        elif chunk.input=='points':
+            print('***', 'SIZE {} points'.format(chunk.dim[1]))
 
         result_chunks = [(sub_chunk, main_iteration, sub_iteration) for sub_iteration,sub_chunk in enumerate(chunk.list)]
         
         #### Use multiprocessing
-        if 1:
+        if 0:
 
             # Applying the multiple processing here, with process of choice, i use 4 for local and 16 for lustre 
             with Pool(processes=param.nproc) as pool:

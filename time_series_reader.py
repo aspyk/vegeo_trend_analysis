@@ -19,7 +19,7 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import numpy as np
-from netCDF4 import Dataset
+import netCDF4 
 import h5py # import after netCDF4 otherwise 'RuntimeError: NetCDF: HDF error' on VITO VM
 from datetime import datetime
 import os,sys
@@ -46,17 +46,25 @@ class TimeSeriesExtractor():
 
         self.mode = self.config['mode']
         
-        self.dseries = pd.date_range(self.start, self.end, freq=self.config['freq'])
+        if self.config['freq']=='10D':
+            # Every 10D means 3 snapshots a month and 36 snapshots a year
+            print('INFO: frequency = 10D so start and end dates are trimmed to start and end of month respectively') 
+            self.start = self.start.replace(day=1)
+            self.end = self.end.replace(day=pd.Period(self.end, freq='D').days_in_month) # freq='xxx' is here just to avoid a bug
+            self.dseries = pd.date_range(self.start, self.end, freq='D')
+            self.dseries = self.dseries[[d in [1,2,3] for d in self.dseries.day]] # select only days 3, 13 and 23 by month
+        else:
+            self.dseries = pd.date_range(self.start, self.end, freq=self.config['freq'])
 
         self.source = self.config['source']
-        
 
+        
+        
     def get_lw_mask(self):
         """ Get the MSG disk land mask (0: see, 1: land, 2: outside space, 3: river/lake)"""
         hlw = h5py.File('./input_ancillary/HDF5_LSASAF_USGS-IGBP_LWMASK_MSG-Disk_201610171300','r')
         self.lwmsk = hlw['LWMASK'][self.chunks.get_limits('global', 'slice')]
         hlw.close()
-    
 
     def extract_albedo(self, chunk, date, dateindex):
         files = {}
@@ -123,27 +131,6 @@ class TimeSeriesExtractor():
         #albedo = np.where(zage>0, np.nan, albedo)
         
         return var
- 
-    def _write_ts_chunk(self, chunk, tseries):
-        """Write time series of the data for each master iteration"""
-        write_file = self.output_path / self.product / (self.hash+'_timeseries_'+'_'.join(chunk.get_limits('global', 'str'))+'.nc')
-        write_file = write_file.as_posix()
-    
-        nc_iter = Dataset(write_file, 'w', format='NETCDF4')
-        
-        nc_iter.createDimension('x', tseries.shape[0])
-        nc_iter.createDimension('y', tseries.shape[1])
-        if chunk.input=='box':
-            nc_iter.createDimension('z', tseries.shape[2])
-            nc_iter.createVariable('time_series_chunk', np.float, ('x','y','z'), zlib=True)
-        else:
-            nc_iter.createVariable('time_series_chunk', np.float, ('x','y'), zlib=True)
-        
-        nc_iter.variables['time_series_chunk'][:] = tseries
-            
-        nc_iter.close()
-    
-        print(">>> Data chunk written to:", write_file)
 
     def plot_histogram(self, tseries):
         ## Initialize an array to store histogram stats
@@ -232,25 +219,39 @@ class TimeSeriesExtractor():
                 # Note: the with/yield pattern should be checked to see if files are corectly closed
                 try:
                     with h5py.File(file_name, 'r') as h5f:
-                        yield h5f
+                        yield date, h5f
                 except Exception:
                     #traceback.print_exc()
                     print ('File not found, moving to next file, assigning NaN to extacted pixel.')
-                    yield None
+                    yield date, None
         
         elif self.mode=='walk':
             ## Get year min and year max from start and end
             ymin = self.start.year
             ymax = self.end.year
 
-            print(ymin, ymax)
+            #print(ymin, ymax)
 
             ## Find in the subdir all the *.nc files and save as [datetime, file path]
+            print('Look for data files in:\n', self.config['root'])
             flist = []
             for y in range(ymin, ymax+1):
                 for dp, dn, fn in os.walk((pathlib.Path(self.config['root'])/str(y)).as_posix()):
                     if len(fn)>0:
-                        ncfile = fnmatch.filter(fn, '*.nc')[0]
+                        fl = fnmatch.filter(fn, '*.nc')
+                        if len(fl)==1:
+                            ncfile = fl[0]
+                            # Get sensor type
+                            if 'PROBAV' in ncfile:
+                                sensor = 'PROBAV'
+                            elif 'VGT' in ncfile:
+                                sensor = 'VGT'
+                            else:
+                                print('WARNING: unknown sensor')
+                                continue
+                        else:
+                            print('WARNING: no .nc file found')
+                            continue
                         # Use regex to catch the date in the filename:
                         # starts with '_' followed by a 1 or 2
                         # then between 7 and 13 digits and a final '_'
@@ -262,24 +263,87 @@ class TimeSeriesExtractor():
                         elif len(date_str[8:])==4:
                             pattern = "%H%M"
                         date_obj = datetime.strptime(date_str, "%Y%m%d"+pattern)
-                        flist.append([date_obj, pathlib.Path(dp) / ncfile])
+                        flist.append([date_obj, sensor, pathlib.Path(dp) / ncfile])
 
-            ## Trim the dates using start and end in a DataFrame
-            df = pd.DataFrame(flist, columns=['datetime','path'])
+
+            ## Process data get from walking with pandas
+
+            df = pd.DataFrame(flist, columns=['datetime','sensor','path'])
+            # Trim the dates using start and end in a DataFrame
             df = df.set_index('datetime') 
             df = df.sort_index().loc[self.start:self.end]
+            # Remove duplicated date with VGT sensor
+            df = df[~((df.index.duplicated(keep=False)) & (df['sensor']=='VGT'))]
+            df = df.drop(columns=['sensor'])
+
+            ## The time series may have missing data and we have to take them into account.
+            ## self.dfseries is the list of all theoretical dates (ex d1 to d4) so we are going
+            ## to construct a dataframe based on it and we are then join it with df that contains
+            ## only valid data in order to pass from df = 
+            ## d2 path2
+            ## d3 path3
+            ## to self.df_full =
+            ## d1 nan
+            ## d2 path2
+            ## d3 path3
+            ## d4 nan
+
+            def test(date):
+                """
+                Apply a formated index to the three month observations
+                xx, yy and zz with xx < yy < zz become 1, 2 and 3
+                We use this because day number are not always the same, ex:
+                - c3s albedo : 10, 20 and 28|29|30|31
+                - c3s LAI: 3, 13, 21|23|24
+                """
+                if date.day < 11:
+                    return date.replace(day=1)
+                elif date.day < 21:
+                    return date.replace(day=2)
+                else:
+                    return date.replace(day=3)
+
+            # Create fake formated date and set it as index
+            df['fake_ref'] = df.index.to_series().map(test)
+            df = df.reset_index().set_index('fake_ref')
+
+            # debug
+            #df = df.loc["2019-05-01":"2019-07-31"]
+            #print(df)
+
+            # Create a new theoretical df based only on dseries as index
+            self.df_full = pd.DataFrame(index=self.dseries)
+            self.df_full.index.name = 'fake_ref'
+
+            # Join with valid data, empty date will automatically filled with NaN or NaT
+            self.df_full = self.df_full.join(df)
+            #print(self.df_full)
+
+
+            # Show summary of valid data by year (or month)
+            #df = df.groupby([df.index.year, df.index.month]).count()
+            sum = self.df_full.groupby([self.df_full.index.year]).count()
+            print(sum)
+            print("Total path:", sum['path'].sum())
+            
+            # datetime index back to column to be easily selected 
+            self.df_full = self.df_full.reset_index() 
+            #print(self.df_full)
+
 
             ## Loop on these files and yield
-            for file_name in df['path']:
-                print(file_name)
+            
+            #for row in df.to_dict(orient="records"):
+            for t in self.df_full.itertuples():
                 # Note: the with/yield pattern should be checked to see if files are corectly closed
                 try:
-                    with h5py.File(file_name, 'r') as h5f:
-                        yield h5f
+                    with h5py.File(t.path, 'r') as h5file:
+                        self.h5f = h5file
+                        yield t
                 except Exception:
                     #traceback.print_exc()
-                    print ('File not found, moving to next file, assigning NaN to extacted pixel.')
-                    yield None
+                    t2 = t._replace(path=None)
+                    yield t2
 
     def _extract_points(self, var, dtype):
         """
@@ -295,12 +359,11 @@ class TimeSeriesExtractor():
         """
         chunk = self.chunk
         data = self.h5f[var][:]
-        prod_chunk = np.zeros((*chunk.dim, 2*chunk.box_offset, 2*chunk.box_offset), dtype=dtype)
+        prod_chunk = np.zeros((chunk.dim[1], 2*chunk.box_offset, 2*chunk.box_offset), dtype=dtype)
         for ii,s in enumerate(chunk.get_limits('global', 'slice')):
             prod_chunk[ii] = data[s]
         del(data)
         return prod_chunk
-
 
     def extract_product(self):
         chunk = self.chunk
@@ -314,9 +377,14 @@ class TimeSeriesExtractor():
                 prod_chunk = self.h5f[self.config['var']][chunk_range] # array of int
             
             elif chunk.input=='points':
-                # Product
+                # Save point name
+                self.ascii_pointnames = [n.encode("ascii", "ignore") for n in chunk.site_coor['NAME']]
+                
                 prod_chunk = self._extract_points(self.config['var'], np.int16)
-                #q_chunk = self._extract_points('QFLAG', chunk, np.uint)
+                q_chunk = self._extract_points('QFLAG', np.uint8)
+                # optional
+                error_chunk = self._extract_points(self.config['var']+'_ERR', np.int16)
+                age_chunk = self._extract_points('AGE', np.int16)
                
                 ## DEBUG: Plot landval
                 if 0:
@@ -346,14 +414,39 @@ class TimeSeriesExtractor():
                     plt.show()
 
                     sys.exit()
-                    ## END DEBUG
+                ## END DEBUG
+
+
+                # Discard pixels in the analysis when:
+                # - Fill value in AL_* (-32767)
+                # - Outside valid range in AL_* ([0, 10000])
+                # - QFLAG indicates ‘sea’ or ‘continental water’ (QFLAG bits 0-1) → Fill value in product
+                # - QFLAG indicates the algorithm failed (QFLAG bit 7) → Fill value in product
+                # Optionally, also the following thresholds can be considered:
+                # - *_ERR > 0.2
+                # - AGE > 30
+                #print(prod_chunk[68:73])
+                prod_chunk[(prod_chunk<0) | (prod_chunk>10000)] = -9999
+                #print(np.count_nonzero(prod_chunk==-9999))
+                prod_chunk[~((q_chunk & 0b11) == 0b01)] = -9999 # if bit 1 and 0 are not land (= 01) set -9999
+                #print(np.count_nonzero(prod_chunk==-9999))
+                prod_chunk[(q_chunk & (1<<7)) == 1] = -9999 # if bit 7 == 1 set -9999
+                #print(np.count_nonzero(prod_chunk==-9999))
+                prod_chunk[error_chunk > 2000] = -9999 
+                prod_chunk[age_chunk > 30] = -9999 
+                #sys.exit()
+                #prod_chunk = prod_chunk.
 
                 ## Agregate data using quality flag
                 # TODO: if more than 75% of the matrix is ok agregate
                 # Count True in each window and keep only when 75% is ok
-                #q_mask = np.count_nonzero(q_mask, axis=(1,2)) >= 12  # 12 for 4x4 windows and 108 for 12x12 
-                #print('non_zero q_mask: {0} / {1}'.format(np.count_nonzero(q_mask), *chunk.dim) )
+                q_mask = np.count_nonzero(~(prod_chunk==-9999), axis=(1,2)) >= 12  # 12 for 4x4 windows and 108 for 12x12 
+                print('valid : {0} / {1} - invalid indices:'.format(np.count_nonzero(q_mask), chunk.dim[1]) )
+                print(np.where(q_mask==0)[0])
+                prod_chunk = 1e-4 * prod_chunk
                 prod_chunk = prod_chunk.mean(axis=(1,2))
+                prod_chunk = np.where(q_mask,  prod_chunk, np.nan)
+                prod_chunk.reshape((1,-1)) # fake 2D array
 
         ## remove invalid data
         if self.product=='lai':
@@ -361,6 +454,52 @@ class TimeSeriesExtractor():
 
         return prod_chunk
     
+    def _write_ts_chunk(self, chunk, tseries, date_ts=None, add_var=[]):
+        """Write time series of the data for each master iteration"""
+        write_file = self.output_path / self.product / (self.hash+'_timeseries_'+'_'.join(chunk.get_limits('global', 'str'))+'.nc')
+        write_file = write_file.as_posix()
+    
+        ds = netCDF4.Dataset(write_file, 'w', format='NETCDF4')
+        
+        ds.createDimension('x', tseries.shape[0])
+        ds.createDimension('y', tseries.shape[1])
+        ds.createDimension('z', tseries.shape[2])
+        ds.createVariable('time_series_chunk', np.float, ('x','y','z'), zlib=True)
+        
+        ds.variables['time_series_chunk'][:] = tseries
+            
+        if date_ts is not None:
+            assert date_ts.shape[0]==tseries.shape[0]
+            ds.createVariable('time_series_date', np.int64, ('x',), zlib=True)
+            
+            ds.variables['time_series_date'][:] = date_ts
+        
+        ## Add additional variables if any
+        # Additional variable have to be given in a list as dict with the following keys:
+        # 'name': string, name of the variable
+        # 'data': numpy array, the actual data 
+        # 'type': string, representing the data type
+        if len(add_var)>0:
+            for v in add_var:
+                tdim = []
+                for idd,d in enumerate(v['data'].shape):
+                    dname = '{}_d{}'.format(v['name'], idd)
+                    ds.createDimension(dname, d)
+                    tdim.append(dname)
+                tdim = tuple(tdim)
+
+                var = ds.createVariable(v['name'], v['type'], tdim, zlib=True)
+                if 0:
+                #if v['type'].startswith('S'):
+                    var_data = netCDF4.stringtochar(v['data'])
+                else:
+                    var_data = v['data']
+                var[:] = var_data
+        
+        ds.close()
+    
+        print(">>> Data chunk written to:", write_file)
+
 
     def run(self):
         b_use_mask = 0
@@ -371,15 +510,18 @@ class TimeSeriesExtractor():
         for chunk in self.chunks.list:
             self.chunk = chunk
 
+
             t0 = timer()
             if chunk.input=='box':
                 print('***', 'SIZE (y,x)=(row,col)=({},{})'.format(*chunk.dim), 'GLOBAL_LOCATION=[{}:{},{}:{}]'.format(*chunk.get_limits('global', 'str')))
             elif chunk.input=='points':
-                print('***', 'SIZE {} points'.format(*chunk.dim))
+                print('***', 'SIZE {} points'.format(chunk.dim[1]))
 
             ## Initialize an array series with nan
-            tseries = np.full([len(self.dseries), *chunk.dim], np.nan)
-            print(tseries.shape)
+            data_ts = np.full([len(self.dseries), *chunk.dim], np.nan)
+            time_ts = []
+            print('data shape:', data_ts.shape)
+
     
             ## Create the chunk mask
             if b_use_mask: 
@@ -391,11 +533,25 @@ class TimeSeriesExtractor():
 
             ## Loop on files
             if 1:
-                for h5index, h5file in enumerate(self.get_product_files()):
-                    if h5file is not None:
-                        print(h5index, 'OK')
-                        self.h5f = h5file
-                        tseries[h5index] = self.extract_product()
+                for f in self.get_product_files():
+                    print("{} - {}".format(f.Index, f.datetime))
+                    if f.path is not None:
+                        print(f.path.name)
+                        data_ts[f.Index] = self.extract_product()
+                        time_ts.append(f.datetime)
+                    else:
+                        print ('File not found, moving to next file, assigning NaN to extacted pixel.')
+                        time_ts.append(datetime(1970,1,1)) # set timestamp to 0 (=1970-01-01) if no data
+
+
+            time_ts = np.array([np.datetime64(d).astype('<M8[s]') for d in time_ts])
+            time_ts = time_ts.astype(np.int64)
+            print(time_ts)
+            ## To store dates
+            #bla = np.datetime64(datetime.datetime(2018,1,1)).astype('<M8[s]')
+            #np.int64(4290000000).astype('<M8[s]')
+            #datetime.datetime(1970,1,1, tzinfo=datetime.timezone.utc).timestamp() == 0
+
 
             # debug
             if 0:
@@ -409,10 +565,13 @@ class TimeSeriesExtractor():
 
             print(timer()-t0)
     
-            self._write_ts_chunk(chunk, tseries)
+            add_var = []
+            add_var.append({'type':'S2', 'name':'point_names', 'data':np.array(chunk.site_coor['NAME'])})
+
+            self._write_ts_chunk(chunk, data_ts, time_ts, add_var)
             #self.plot_histogram(tseries)
             #self.plot_image_series(tseries)
    
-            del tseries       
+            del data_ts       
     
 
