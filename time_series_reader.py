@@ -337,7 +337,8 @@ class TimeSeriesExtractor():
             for t in self.df_full.itertuples():
                 # Note: the with/yield pattern should be checked to see if files are corectly closed
                 try:
-                    with h5py.File(t.path, 'r') as h5file:
+                    #with h5py.File(t.path, 'r') as h5file:
+                    with netCDF4.Dataset(t.path, 'r') as h5file:
                         self.h5f = h5file
                         yield t
                 except Exception:
@@ -358,7 +359,8 @@ class TimeSeriesExtractor():
         and so it may yield mixed data when regions share same lat or overlap.
         """
         chunk = self.chunk
-        data = self.h5f[var][:]
+        #data = self.h5f[var][:]
+        data = self.h5f.variables[var][:]
         prod_chunk = np.zeros((chunk.dim[1], 2*chunk.box_offset, 2*chunk.box_offset), dtype=dtype)
         for ii,s in enumerate(chunk.get_limits('global', 'slice')):
             prod_chunk[ii] = data[s]
@@ -532,16 +534,20 @@ class TimeSeriesExtractor():
             res = [] # debug
 
             ## Loop on files
-            if 1:
-                for f in self.get_product_files():
-                    print("{} - {}".format(f.Index, f.datetime))
-                    if f.path is not None:
-                        print(f.path.name)
-                        data_ts[f.Index] = self.extract_product()
-                        time_ts.append(f.datetime)
-                    else:
-                        print ('File not found, moving to next file, assigning NaN to extacted pixel.')
-                        time_ts.append(datetime(1970,1,1)) # set timestamp to 0 (=1970-01-01) if no data
+            for f in self.get_product_files():
+                print("{} - {}".format(f.Index, f.datetime))
+                if f.path is not None:
+                    #print(f.path.name)
+                    #data_ts[f.Index] = self.extract_product()
+                    print(len(self.h5f.ncattrs()))
+                    try:
+                        print(self.h5f.getncattr('platform'))
+                    except:
+                        print('warning')
+                    time_ts.append(f.datetime)
+                else:
+                    print ('File not found, moving to next file, assigning NaN to extacted pixel.')
+                    time_ts.append(datetime(1970,1,1)) # set timestamp to 0 (=1970-01-01) if no data
 
 
             time_ts = np.array([np.datetime64(d).astype('<M8[s]') for d in time_ts])
