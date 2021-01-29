@@ -29,6 +29,7 @@ import traceback
 from timeit import default_timer as timer
 import generic
 import pathlib
+from tools import SimpleTimer
 
 
 class TimeSeriesExtractor():
@@ -66,7 +67,7 @@ class TimeSeriesExtractor():
         self.lwmsk = hlw['LWMASK'][self.chunks.get_limits('global', 'slice')]
         hlw.close()
 
-    def extract_albedo(self, chunk, date, dateindex):
+    def DEPRECATED_extract_albedo(self, chunk, date, dateindex):
         files = {}
         files['mdal_nrt'] = self.product_files['mdal_nrt'][dateindex]
         files['mdal'] = self.product_files['mdal'][dateindex]
@@ -108,7 +109,7 @@ class TimeSeriesExtractor():
         
         return albedo
    
-    def extract_evapo(self, chunk, date, dateindex):
+    def DEPRECATED_extract_evapo(self, chunk, date, dateindex):
         file_name = self.product_files['mdal'][dateindex]
         
         print(file_name)
@@ -246,6 +247,8 @@ class TimeSeriesExtractor():
                                 sensor = 'PROBAV'
                             elif 'VGT' in ncfile:
                                 sensor = 'VGT'
+                            elif 'AVHRR' in ncfile:
+                                sensor = 'AVHRR'
                             else:
                                 print('WARNING: unknown sensor')
                                 continue
@@ -280,13 +283,13 @@ class TimeSeriesExtractor():
             ## self.dfseries is the list of all theoretical dates (ex d1 to d4) so we are going
             ## to construct a dataframe based on it and we are then join it with df that contains
             ## only valid data in order to pass from df = 
-            ## d2 path2
-            ## d3 path3
+            ##  d2 path2
+            ##  d3 path3
             ## to self.df_full =
-            ## d1 nan
-            ## d2 path2
-            ## d3 path3
-            ## d4 nan
+            ##  d1 nan
+            ##  d2 path2
+            ##  d3 path3
+            ##  d4 nan
 
             def test(date):
                 """
@@ -337,10 +340,15 @@ class TimeSeriesExtractor():
             for t in self.df_full.itertuples():
                 # Note: the with/yield pattern should be checked to see if files are corectly closed
                 try:
-                    #with h5py.File(t.path, 'r') as h5file:
-                    with netCDF4.Dataset(t.path, 'r') as h5file:
-                        self.h5f = h5file
-                        yield t
+                    self.b_h5py_r = 1
+                    if self.b_h5py_r:
+                        with h5py.File(t.path, 'r') as h5file:
+                            self.h5f = h5file
+                            yield t
+                    else:
+                        with netCDF4.Dataset(t.path, 'r') as h5file:
+                            self.h5f = h5file
+                            yield t
                 except Exception:
                     #traceback.print_exc()
                     t2 = t._replace(path=None)
@@ -352,20 +360,95 @@ class TimeSeriesExtractor():
         
         Notes
         -----
-        Timing is good if there are a lot of points and loading of data is not
+        1/ Profiling
+        1.1/ Timing is good if there are a lot of points and loading of data is not
         too long. Best way should be using hyperslabs in h5py low level api
         but there are some array manipulation do to after extraction: hyperslab
         blocks are sorted by lat then lon (to be efficiently read in the file)
         and so it may yield mixed data when regions share same lat or overlap.
+
+        1.2/ On 1km dataset, profiling gives:
+        h5py:
+        data = self.h5f[var][:] --> ~2.4s
+        netCDF4:
+        data = self.h5f.variables[var][:] --> ~24s, ie 10x h5py, to be continued...
+
+        2/ To plot netCDF file attributes
+        #print(len(self.h5f.ncattrs()))
+        try:
+            print(self.h5f.getncattr('platform'))
+        except:
+            print('warning: no platform attribute')
         """
         chunk = self.chunk
-        #data = self.h5f[var][:]
-        data = self.h5f.variables[var][:]
-        prod_chunk = np.zeros((chunk.dim[1], 2*chunk.box_offset, 2*chunk.box_offset), dtype=dtype)
+        ti = SimpleTimer()
+        if self.b_h5py_r:
+            data = self.h5f[var][:]
+            ti('h5py load time for {}:'.format(var))
+        else:
+            data = self.h5f.variables[var][:]
+            ti('netCDF4 load time for {}:'.format(var))
+        if chunk.box_offset==0:
+            prod_chunk = np.zeros((chunk.dim[1], 1, 1), dtype=dtype)
+        else:
+            prod_chunk = np.zeros((chunk.dim[1], 2*chunk.box_offset, 2*chunk.box_offset), dtype=dtype)
         for ii,s in enumerate(chunk.get_limits('global', 'slice')):
             prod_chunk[ii] = data[s]
         del(data)
         return prod_chunk
+
+    def _get_c3s_albedo_points(self):
+
+        age_chunk = self._extract_points('AGE', np.int16)
+        q_chunk = self._extract_points('QFLAG', np.uint8)
+        
+        d = {}
+        for v in self.config['var']:
+            prod_chunk = self._extract_points(v, np.int16)
+            error_chunk = self._extract_points(v+'_ERR', np.int16)
+        
+
+            # Discard pixels in the analysis when:
+            # - Fill value in AL_* (-32767)
+            # - Outside valid range in AL_* ([0, 10000])
+            # - QFLAG indicates ‘sea’ or ‘continental water’ (QFLAG bits 0-1) → Fill value in product
+            # - QFLAG indicates the algorithm failed (QFLAG bit 7) → Fill value in product
+            # Optionally, also the following thresholds can be considered:
+            # - *_ERR > 0.2
+            # - AGE > 30
+            b_print_sel = 0
+            prod_chunk[(prod_chunk<0) | (prod_chunk>10000)] = -9999
+            if b_print_sel: print(np.count_nonzero(prod_chunk==-9999))
+            prod_chunk[~((q_chunk & 0b11) == 0b01)] = -9999 # if bit 1 and 0 are not land (= 01) set -9999
+            if b_print_sel: print(np.count_nonzero(prod_chunk==-9999))
+            prod_chunk[(q_chunk & (1<<7)) == 1] = -9999 # if bit 7 == 1 set -9999
+            if b_print_sel: print(np.count_nonzero(prod_chunk==-9999))
+            prod_chunk[error_chunk > 2000] = -9999 
+            if b_print_sel: print(np.count_nonzero(prod_chunk==-9999))
+            prod_chunk[age_chunk > 30] = -9999 
+            if b_print_sel: print(np.count_nonzero(prod_chunk==-9999))
+            #sys.exit()
+            #prod_chunk = prod_chunk.
+
+            ## Agregate data using quality flag
+            # Count True in each window and keep only when 75% is ok
+            # 1 for 1x1, 12 for 4x4 and 108 for 12x12
+            if self.chunk.c3s_resol=='4km':
+                threshold = 1
+            if self.chunk.c3s_resol=='1km':
+                threshold = 12
+            if self.chunk.c3s_resol=='300m':
+                threshold = 108
+            q_mask = np.count_nonzero(~(prod_chunk==-9999), axis=(1,2)) >= threshold
+            print('valid : {0} / {1}'.format(np.count_nonzero(q_mask), self.chunk.dim[1]) )
+            #print('invalid indices:')
+            #print(np.where(q_mask==0)[0])
+            d[v] = 1e-4 * prod_chunk
+            d[v] = d[v].mean(axis=(1,2))
+            d[v] = np.where(q_mask,  d[v], np.nan)
+            d[v].reshape((1,-1)) # fake 2D array (1,nb_pts)
+
+        return d
 
     def extract_product(self):
         chunk = self.chunk
@@ -381,36 +464,56 @@ class TimeSeriesExtractor():
             elif chunk.input=='points':
                 # Save point name
                 self.ascii_pointnames = [n.encode("ascii", "ignore") for n in chunk.site_coor['NAME']]
-                
-                prod_chunk = self._extract_points(self.config['var'], np.int16)
-                q_chunk = self._extract_points('QFLAG', np.uint8)
-                # optional
-                error_chunk = self._extract_points(self.config['var']+'_ERR', np.int16)
-                age_chunk = self._extract_points('AGE', np.int16)
-               
+ 
                 ## DEBUG: Plot landval
                 if 0:
-                    data = h5f[self.config['var']][:]
+                    print("DEBUG: print landval sites")
+                    print('Load...')
+                    data_in = self.h5f[self.config['var']][:]
+                    #data = self.h5f[self.config['var']][0,::2,::2]
                     #data = h5f['retrieval_flag'][:]
+                    data = data_in[0,::2,::2]
+                    del(data_in)
 
-                    fig = plt.figure()
-                    ax = fig.add_subplot(111)
+                    print('Plot...')
+                    ti = SimpleTimer()
+                    ti('t01')
+                    fig, ax = plt.subplots()
+                    ti('t02')
                     
-                    #data = data.astype(np.float)
+                    data = 1e-4*data
+                    ti('t1')
+                    data[data<0] = 0.0
+                    ti('t2')
+                    print(data.shape)
                     print(data.min(), data.max())
                     #data = data & 0xFC1 # See Appendix A of D3.3.8-v2.1_PUGS_CDR-ICDR_LAI_FAPAR_PROBAV_v2.0_PRODUCTS_v1.1.pdf
                     print(data.min(), data.max())
-                    for ii,s in enumerate(chunk.get_limits('global', 'slice')):
-                        data[s] = 2e3
-                    cm = 'jet'
-                    cm = 'gist_ncar'
-                    mat = ax.imshow(data[0,::2,::2], cmap=cm)
-                    #mat = ax.imshow(data[0], cmap=cm)
-                    # create an axes on the right side of ax. The width of cax will be 5%
-                    # of ax and the padding between cax and ax will be fixed at 0.05 inch.
-                    divider = make_axes_locatable(ax)
-                    cax = divider.append_axes("right", size="5%", pad=0.05)
-                    plt.colorbar(mat, cax=cax) 
+                    ti('t3')
+                    
+                    ptype = 2
+                    # Add landval sites directly in array
+                    if ptype==1:
+                        for ii,s in enumerate(chunk.get_limits('global', 'slice')):
+                            data[s] = 2e3
+                    ti('t4')
+                    if 1:
+                        cm = 'jet'
+                        cm = 'gist_ncar'
+                        #mat = ax.imshow(data[0,::2,::2], cmap=cm)
+                        mat = ax.imshow(data, cmap=cm)
+                        # create an axes on the right side of ax. The width of cax will be 5%
+                        # of ax and the padding between cax and ax will be fixed at 0.05 inch.
+                        divider = make_axes_locatable(ax)
+                        cax = divider.append_axes("right", size="5%", pad=0.05)
+                        plt.colorbar(mat, cax=cax) 
+                    
+                    # Add landval sites with scatter
+                    if ptype==2:
+                        pts = (0.5*chunk.site_coor[['ilat', 'ilon']].values.T).astype(np.int32)
+                        print(pts.shape)
+                        ax.scatter(pts[1], pts[0])
+                        
 
                     #plt.savefig('res_c3s.png')
                     plt.show()
@@ -418,37 +521,8 @@ class TimeSeriesExtractor():
                     sys.exit()
                 ## END DEBUG
 
+                prod_chunk = self._get_c3s_albedo_points()
 
-                # Discard pixels in the analysis when:
-                # - Fill value in AL_* (-32767)
-                # - Outside valid range in AL_* ([0, 10000])
-                # - QFLAG indicates ‘sea’ or ‘continental water’ (QFLAG bits 0-1) → Fill value in product
-                # - QFLAG indicates the algorithm failed (QFLAG bit 7) → Fill value in product
-                # Optionally, also the following thresholds can be considered:
-                # - *_ERR > 0.2
-                # - AGE > 30
-                #print(prod_chunk[68:73])
-                prod_chunk[(prod_chunk<0) | (prod_chunk>10000)] = -9999
-                #print(np.count_nonzero(prod_chunk==-9999))
-                prod_chunk[~((q_chunk & 0b11) == 0b01)] = -9999 # if bit 1 and 0 are not land (= 01) set -9999
-                #print(np.count_nonzero(prod_chunk==-9999))
-                prod_chunk[(q_chunk & (1<<7)) == 1] = -9999 # if bit 7 == 1 set -9999
-                #print(np.count_nonzero(prod_chunk==-9999))
-                prod_chunk[error_chunk > 2000] = -9999 
-                prod_chunk[age_chunk > 30] = -9999 
-                #sys.exit()
-                #prod_chunk = prod_chunk.
-
-                ## Agregate data using quality flag
-                # TODO: if more than 75% of the matrix is ok agregate
-                # Count True in each window and keep only when 75% is ok
-                q_mask = np.count_nonzero(~(prod_chunk==-9999), axis=(1,2)) >= 12  # 12 for 4x4 windows and 108 for 12x12 
-                print('valid : {0} / {1} - invalid indices:'.format(np.count_nonzero(q_mask), chunk.dim[1]) )
-                print(np.where(q_mask==0)[0])
-                prod_chunk = 1e-4 * prod_chunk
-                prod_chunk = prod_chunk.mean(axis=(1,2))
-                prod_chunk = np.where(q_mask,  prod_chunk, np.nan)
-                prod_chunk.reshape((1,-1)) # fake 2D array
 
         ## remove invalid data
         if self.product=='lai':
@@ -491,17 +565,41 @@ class TimeSeriesExtractor():
                 tdim = tuple(tdim)
 
                 var = ds.createVariable(v['name'], v['type'], tdim, zlib=True)
-                if 0:
-                #if v['type'].startswith('S'):
-                    var_data = netCDF4.stringtochar(v['data'])
-                else:
-                    var_data = v['data']
+                var_data = v['data']
                 var[:] = var_data
         
         ds.close()
-    
         print(">>> Data chunk written to:", write_file)
 
+    def _write_ts_chunk2(self, chunk, out_var):
+        """
+        Write time series of the data
+        Variable have to be given in a list as dict with the following keys:
+        'name': string, name of the variable
+        'data': numpy array, the actual data 
+        'type': string, representing the data type
+        """
+        write_file = self.output_path / self.product / (self.hash+'_timeseries_'+'_'.join(chunk.get_limits('global', 'str'))+'.nc')
+        write_file = write_file.as_posix()
+    
+        ds = netCDF4.Dataset(write_file, 'w', format='NETCDF4')
+        
+        if len(out_var)>0:
+            for v in out_var:
+                tdim = []
+                for idd,d in enumerate(v['data'].shape):
+                    dname = '{}_d{}'.format(v['name'], idd)
+                    ds.createDimension(dname, d)
+                    tdim.append(dname)
+                tdim = tuple(tdim)
+
+                var = ds.createVariable(v['name'], v['type'], tdim, zlib=True)
+                var_data = v['data']
+                var[:] = var_data
+        
+        ds.close()
+        print(">>> Data chunk written to:", write_file)
+        
 
     def run(self):
         b_use_mask = 0
@@ -512,17 +610,19 @@ class TimeSeriesExtractor():
         for chunk in self.chunks.list:
             self.chunk = chunk
 
-
-            t0 = timer()
+            ## Print some info
             if chunk.input=='box':
                 print('***', 'SIZE (y,x)=(row,col)=({},{})'.format(*chunk.dim), 'GLOBAL_LOCATION=[{}:{},{}:{}]'.format(*chunk.get_limits('global', 'str')))
             elif chunk.input=='points':
                 print('***', 'SIZE {} points'.format(chunk.dim[1]))
 
-            ## Initialize an array series with nan
-            data_ts = np.full([len(self.dseries), *chunk.dim], np.nan)
+
+            ## Initialize time series with array of nan
+            data_ts = {}
+            for v in self.config['var']:
+                data_ts[v] = np.full([len(self.dseries), *chunk.dim], np.nan)
             time_ts = []
-            print('data shape:', data_ts.shape)
+            print('data shape:', data_ts[self.config['var'][0]].shape)
 
     
             ## Create the chunk mask
@@ -533,26 +633,29 @@ class TimeSeriesExtractor():
     
             res = [] # debug
 
+            t0 = datetime.now()
+
             ## Loop on files
             for f in self.get_product_files():
-                print("{} - {}".format(f.Index, f.datetime))
+                print("####################################################")
+                print("{}/{} - {}".format(f.Index, len(self.dseries), f.datetime))
                 if f.path is not None:
-                    #print(f.path.name)
-                    #data_ts[f.Index] = self.extract_product()
-                    print(len(self.h5f.ncattrs()))
-                    try:
-                        print(self.h5f.getncattr('platform'))
-                    except:
-                        print('warning')
+                    print(f.path.name)
+                    tmp = self.extract_product()
+                    for v in self.config['var']:
+                        data_ts[v][f.Index] = tmp[v]
                     time_ts.append(f.datetime)
                 else:
                     print ('File not found, moving to next file, assigning NaN to extacted pixel.')
                     time_ts.append(datetime(1970,1,1)) # set timestamp to 0 (=1970-01-01) if no data
 
+                now = datetime.now()
+                print('{} | elapsed: {}'.format(now, now-t0))
+
 
             time_ts = np.array([np.datetime64(d).astype('<M8[s]') for d in time_ts])
             time_ts = time_ts.astype(np.int64)
-            print(time_ts)
+            #print(time_ts)
             ## To store dates
             #bla = np.datetime64(datetime.datetime(2018,1,1)).astype('<M8[s]')
             #np.int64(4290000000).astype('<M8[s]')
@@ -569,12 +672,20 @@ class TimeSeriesExtractor():
                 return
 
 
-            print(timer()-t0)
-    
-            add_var = []
-            add_var.append({'type':'S2', 'name':'point_names', 'data':np.array(chunk.site_coor['NAME'])})
+            ## Try with a more generic writer
+            if 0:
+                add_var = []
+                add_var.append({'type':'S2', 'name':'point_names', 'data':np.array(chunk.site_coor['NAME'])})
+                self._write_ts_chunk(chunk, data_ts, time_ts, add_var)
+            else:
+                out_var = []
+                for name, data in data_ts.items():
+                    out_var.append({'type':np.float, 'name':name, 'data':data})
+                out_var.append({'type':np.int64, 'name':'ts_dates', 'data':time_ts})
+                out_var.append({'type':'S2', 'name':'point_names', 'data':np.array(chunk.site_coor['NAME'])})
+                self._write_ts_chunk2(chunk, out_var)
 
-            self._write_ts_chunk(chunk, data_ts, time_ts, add_var)
+            #self.plot_histogram(tseries)
             #self.plot_histogram(tseries)
             #self.plot_image_series(tseries)
    

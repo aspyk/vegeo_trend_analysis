@@ -70,16 +70,61 @@ al_mdal_nrt:
     freq: '1D'
     var: 'AL-BB-DH'
 
-c3s_alspdh: #  On VITO VM:
- #  C3S_LAI_Global_1KM_V0 (1999 -> 2020)
- #  C3S_LAI_Global_1KM_V1/V1.0.1 (1998 -> 2014)
- #  C3S_LAI_Global_1KM_V2/V2.0.1 (2013 -> 2020)
- #  C3S_LAI_Global_4KM_V1/V1.0.1 (1981 -> 2005)
+ #-----------
+ # ON VITO VM
+ #-----------
+
+c3s_alspdh_1km:
     source: 'c3s'
     root: '/data/c3s_pdf_live/MTDA/C3S_ALSP_DH_Global_1KM_V2/V2.0.1'
     mode: 'walk'  
     freq: '10D'
     var: 'AL_DH_B0'
+
+c3s_alspdh_4km:
+    source: 'c3s'
+    root: '/data/c3s_pdf_live/MTDA/C3S_ALSP_DH_Global_4KM_V2/V2.0.1/'
+    mode: 'walk'  
+    freq: '10D'
+    var: 'AL_DH_B0'
+
+c3s_al_bbbh_1km:
+    root: '/data/c3s_pdf_live/MTDA/C3S_ALBB_BH_Global_1KM_V2/V2.0.1'
+    <<: &param
+        source: 'c3s'
+        mode: 'walk'  
+        freq: '10D'
+    <<: &var
+        var:
+            - 'AL_BH_BB'
+            - 'AL_BH_NI'
+            - 'AL_BH_VI'
+    
+c3s_al_bbbh_4km:
+    root: '/data/c3s_pdf_live/MTDA/C3S_ALBB_BH_Global_4KM_V2/V2.0.1'
+    <<: *param
+    <<: *var
+
+
+ #    root_bbdh_4km: '/data/c3s_pdf_live/MTDA/C3S_ALBB_DH_Global_4KM_V2/V2.0.1'
+ #    root_bbdh_1km: '/data/c3s_pdf_live/MTDA/C3S_ALBB_DH_Global_1KM_V2/V2.0.1'
+ #    root_bbbh_4km: '/data/c3s_pdf_live/MTDA/C3S_ALBB_BH_Global_4KM_V2/V2.0.1'
+ #    root_spdh_4km: '/data/c3s_pdf_live/MTDA/C3S_ALSP_DH_Global_4KM_V2/V2.0.1'
+ #    root_spdh_1km: '/data/c3s_pdf_live/MTDA/C3S_ALSP_DH_Global_1KM_V2/V2.0.1'
+ #    root_spbh_4km: '/data/c3s_pdf_live/MTDA/C3S_ALSP_BH_Global_4KM_V2/V2.0.1'
+ #    root_spbh_1km: '/data/c3s_pdf_live/MTDA/C3S_ALSP_BH_Global_1KM_V2/V2.0.1'
+ #    root: '/data/c3s_pdf_live/MTDA/C3S_AL{type}_Global_{resol}_V2/V2.0.1'
+ #    mode: 'walk'  
+ #    freq: '10D'
+ #    var_sp:
+ #        - 'AL_DH_B0'
+ #        - 'AL_DH_B2'
+ #        - 'AL_DH_B3'
+ #        - 'AL_DH_MIR'
+ #    var_bb:
+ #        - 'AL_DH_BB'
+ #        - 'AL_DH_NI'
+ #        - 'AL_DH_VI'
 
 
 
