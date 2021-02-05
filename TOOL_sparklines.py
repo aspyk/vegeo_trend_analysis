@@ -10,6 +10,7 @@ import textwrap
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
 import base64
 
 from io import BytesIO
@@ -32,15 +33,18 @@ class Sparkline():
     
     ## Sensor dates
     #NOAA_satellite Start_date End_date
-    dic_sen = {}
-    dic_sen['NOAA7']  =  ('20-09-1981', '31-12-1984')
-    dic_sen['NOAA9']  =  ('20-03-1985', '10-11-1988')
-    dic_sen['NOAA11'] =  ('30-11-1988', '20-09-1994')
-    dic_sen['NOAA14'] =  ('10-02-1995', '10-03-2001')
-    dic_sen['NOAA16'] =  ('20-03-2001', '10-09-2002')
-    dic_sen['NOAA17'] =  ('20-09-2002', '31-12-2005')
+    sensor_dates = []
+    sensor_dates.append(['NOAA7',  ('20-09-1981', '31-12-1984')])
+    sensor_dates.append(['NOAA9',  ('20-03-1985', '10-11-1988')])
+    sensor_dates.append(['NOAA11', ('30-11-1988', '20-09-1994')])
+    sensor_dates.append(['NOAA14', ('10-02-1995', '10-03-2001')])
+    sensor_dates.append(['NOAA16', ('20-03-2001', '10-09-2002')])
+    sensor_dates.append(['NOAA17', ('20-09-2002', '31-12-2005')])
+    sensor_dates.append(['VGT1',   ('10-04-1998', '31-01-2003')])
+    sensor_dates.append(['VGT2',   ('31-01-2003', '31-05-2014')])
+    sensor_dates.append(['PROBAV', ('31-10-2013', '30-06-2020')])
 
-    dic_sen = {k: [datetime.strptime(i, "%d-%m-%Y").timestamp() for i in v] for k,v in dic_sen.items()}
+    sensor_dates = [[v[0], [datetime.strptime(i, "%d-%m-%Y").timestamp() for i in v[1]]] for v in sensor_dates]
 
 
     def __init__(self, data):
@@ -70,14 +74,15 @@ class Sparkline():
         mode: string, 'oneline' or 'wrap'
         """
     
-        #dmin = np.nanmin(data)
-        #dmax = np.nanmax(data)
-
         dmin = self.data_group.gdmin
         dmax = self.data_group.gdmax
 
-        tmin = self.data_group.gtmin
-        tmax = self.data_group.gtmax
+        if self.time_range=='full':
+            tmin = self.data_group.gtmin
+            tmax = self.data_group.gtmax
+        else:
+            tmin = pd.to_datetime(self.time_range[0]).timestamp()
+            tmax = pd.to_datetime(self.time_range[1]).timestamp()
 
         if mode=='oneline':
 
@@ -86,35 +91,50 @@ class Sparkline():
             self.fig, self.ax = plt.subplots(1, 1, figsize=self.figsize, **kwags)
 
             ## Add sensor time range
-            for k,v in self.dic_sen.items():
-                #ax.plot(v, mx)
-                self.ax.fill_between(v, 2*[dmax], 2*[dmin], alpha=0.1)
+            l = dmax-dmin
+            for v in self.sensor_dates:
+                #self.ax.fill_between(v[1], 2*[dmax], 2*[dmin], alpha=0.1)
+                if 'VGT' in v[0]:
+                    self.ax.fill_between(v[1], 2*[0.5*(dmax+dmin)-0.05*l], 2*[dmin], alpha=0.2)
+                else:
+                    self.ax.fill_between(v[1], 2*[dmax], 2*[0.5*(dmax+dmin)+0.05*l], alpha=0.2)
                 # Plot name
-                plt.text(0.5*(v[1]+v[0]), 1.2*dmax, k, horizontalalignment='center', fontsize=8)
-            
+                if tmin < 0.5*(v[1][1]+v[1][0]) < tmax:
+                    t = plt.text(0.5*(v[1][1]+v[1][0]), 1.*dmax, v[0], horizontalalignment='center', fontsize=8)
+           
+            ## Get the bbox of the sensor name text
+            # get the inverse of the transformation from data coordinates to pixels
+            #transf = self.ax.transData.inverted() # to data coord
+            transf = self.ax.transAxes.inverted() # to axes coord
+            bb = t.get_window_extent(renderer=self.fig.canvas.get_renderer())
+            bb_datacoords = bb.transformed(transf)
+            print(bb_datacoords)
+
             ## Add horizontal line and label for max
             self.ax.axhline(dmax, c='k', alpha=0.1)
             # Plot name
-            plt.text(tmin, 1.2*dmax, text[:18], horizontalalignment='left', fontsize=8)
+            plt.text(tmin, 1.*dmax, text[:18], horizontalalignment='left', fontsize=8)
             # Plot max
-            plt.text(tmax, 1.2*dmax, '{:.2f}'.format(dmax), horizontalalignment='right', fontsize=8)
+            plt.text(tmax, 1.*dmax, '{:.2f}'.format(dmax), horizontalalignment='right', fontsize=8)
 
-            # Add vertical lines for years
-            #for i in range(int(len(data)/36)):
-            #    ax.axvline(i+1, c='k', alpha=0.1)
+            ## Add vertical lines for years at yyyy-01-01 00:00:00
+            ymin = pd.to_datetime(tmin, unit='s').year
+            ymax = pd.to_datetime(tmax, unit='s').year
+            for y in pd.date_range(str(ymin), str(ymax), freq='AS'):
+                self.ax.axvline(y.timestamp(), c='k', alpha=0.1)
 
             ## Add data
             for ts in data:
                 self.ax.plot(ts.iloc[:,0].values, ts.iloc[:,1].values)
 
-
             self.ax.set_xlim(tmin, tmax)
-
-            ## TODO
-            # - plot vline for years
-            # - plot limit between sensor
-            # - plot several files using dates
-
+            
+            ## Remove all ticks and frame to make sparkline style 
+            for k,v in self.ax.spines.items():
+                v.set_visible(False)
+            self.ax.set_xticks([])
+            self.ax.set_yticks([])
+    
         
         elif mode=='wrap':
             
@@ -139,15 +159,69 @@ class Sparkline():
             plt.text(36, 1.2*dmax, '{:.2f}'.format(dmax), horizontalalignment='right', fontsize=8)
             self.ax.set_xlim(0,36)
         
-        ## Remove all ticks and frame to make sparkline style 
-        if 1: 
+            ## Remove all ticks and frame to make sparkline style 
             for k,v in self.ax.spines.items():
                 v.set_visible(False)
             self.ax.set_xticks([])
             self.ax.set_yticks([])
     
     
-        #plt.title('Mn/Mx: {:.2f} / {:.2f}'.format(np.nanmin(data), np.nanmax(data)), fontsize=8)
+        if mode=='classical':
+
+            if self.figsize is None:
+                self.figsize = (22, 4)
+            self.fig, self.ax = plt.subplots(1, 1, figsize=self.figsize, **kwags)
+
+            yrange = (0.0, 0.6)
+
+            ## Add sensor time range
+            d = yrange[1]-yrange[0]
+            s = yrange[1]+yrange[0]
+            for v in self.sensor_dates:
+                if 'VGT' in v[0]:
+                    self.ax.fill_between(v[1], 2*[yrange[0]], 2*[0.5*s-0.02*d], alpha=0.2)
+                    htxt = yrange[0]
+                else:
+                    self.ax.fill_between(v[1], 2*[yrange[1]], 2*[0.5*s+0.02*d], alpha=0.2)
+                    htxt = yrange[1]
+                # Plot name
+                if tmin < 0.5*(v[1][1]+v[1][0]) < tmax:
+                    t = plt.text(0.5*(v[1][1]+v[1][0]), htxt, v[0], horizontalalignment='center', fontsize=8)
+           
+            if 0:
+                ## TIP: Get the bbox of the sensor name text
+                # get the inverse of the transformation from data coordinates to pixels
+                #transf = self.ax.transData.inverted() # to data coord
+                transf = self.ax.transAxes.inverted() # to axes coord
+                bb = t.get_window_extent(renderer=self.fig.canvas.get_renderer())
+                bb_datacoords = bb.transformed(transf)
+                print(bb_datacoords)
+
+            ## Add vertical lines for years at yyyy-01-01 00:00:00
+            ymin = pd.to_datetime(tmin, unit='s').year
+            ymax = pd.to_datetime(tmax, unit='s').year
+            xlabs = []
+            xlocs = []
+            for y in pd.date_range(str(ymin), str(ymax), freq='AS'):
+                self.ax.axvline(y.timestamp(), c='k', alpha=0.1)
+                xlabs.append(str(y.year))
+                xlocs.append(y.timestamp())
+
+            ## Add data
+            for ts in data:
+                self.ax.plot(ts.iloc[:,0].values, ts.iloc[:,1].values)
+                #self.ax.plot(pd.to_datetime(ts.iloc[:,0].values, unit='s'), ts.iloc[:,1].values)
+
+            
+            self.ax.set_ylim(0.0, 0.6)
+            
+            self.ax.set_xlim(tmin, tmax)
+            #self.fig.autofmt_xdate()
+            #self.ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
+            self.ax.set_xticklabels(xlabs)
+            self.ax.set_xticks(xlocs)
+        
+            plt.title(text, fontsize=8)
         
     
         img = BytesIO()
@@ -160,9 +234,10 @@ class Sparkline():
     
    
     
-    def run(self, vname, mode, figsize=None):
+    def run(self, vname, mode, figsize=None, time_range='full'):
     
         self.figsize = figsize
+        self.time_range = time_range
 
         self.data_group.use_var(vname)
 
@@ -281,9 +356,15 @@ class TimeSeries():
         print(data.shape)
    
         #DEBUG: reduce data
-        if 0:
-            data = data[:,:10]
-            self.point_names = self.point_names[:10]
+        if 1:
+            #data = data[:,:10]
+            #self.point_names = self.point_names[:10]
+            
+            sites = ['FRENCHMAN_FLAT', 'BELMANIP_00332', 'Egypt#1', 'EL_FARAFRA']
+            id_sites = [i for i, j in enumerate(self.point_names) if j in sites]
+            data = data[:,id_sites]
+            self.point_names = [self.point_names[i] for i in id_sites]
+
         
         self.df = pd.DataFrame(data, columns=self.point_names)
         self.df.insert(0, 'timestamp', self.dates)
@@ -308,5 +389,7 @@ if __name__ == "__main__":
     
     s = Sparkline(tsg)
     #s.run('wrap')
-    s.run(vname, 'oneline')
+    #s.run(vname, 'oneline')
+    #s.run(vname, 'oneline', time_range=('1998-01-01', '2014-12-31'))
+    s.run(vname, 'classical', time_range=('1998-01-01', '2014-12-31'))
     
