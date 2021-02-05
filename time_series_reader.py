@@ -242,15 +242,8 @@ class TimeSeriesExtractor():
                         fl = fnmatch.filter(fn, '*.nc')
                         if len(fl)==1:
                             ncfile = fl[0]
-                            # Get sensor type
-                            if 'PROBAV' in ncfile:
-                                sensor = 'PROBAV'
-                            elif 'VGT' in ncfile:
-                                sensor = 'VGT'
-                            elif 'AVHRR' in ncfile:
-                                sensor = 'AVHRR'
-                            else:
-                                print('WARNING: unknown sensor')
+                            # Check sensor type
+                            if self.chunk.sensor not in ncfile:
                                 continue
                         else:
                             print('WARNING: no .nc file found')
@@ -266,18 +259,18 @@ class TimeSeriesExtractor():
                         elif len(date_str[8:])==4:
                             pattern = "%H%M"
                         date_obj = datetime.strptime(date_str, "%Y%m%d"+pattern)
-                        flist.append([date_obj, sensor, pathlib.Path(dp) / ncfile])
+                        flist.append([date_obj, pathlib.Path(dp) / ncfile])
 
 
             ## Process data get from walking with pandas
 
-            df = pd.DataFrame(flist, columns=['datetime','sensor','path'])
+            df = pd.DataFrame(flist, columns=['datetime','path'])
             # Trim the dates using start and end in a DataFrame
             df = df.set_index('datetime') 
             df = df.sort_index().loc[self.start:self.end]
-            # Remove duplicated date with VGT sensor
-            df = df[~((df.index.duplicated(keep=False)) & (df['sensor']=='VGT'))]
-            df = df.drop(columns=['sensor'])
+            # DEPRECATED: to be done in merge module: Remove duplicated date with VGT sensor
+            #df = df[~((df.index.duplicated(keep=False)) & (df['sensor']=='VGT'))]
+            #df = df.drop(columns=['sensor'])
 
             ## The time series may have missing data and we have to take them into account.
             ## self.dfseries is the list of all theoretical dates (ex d1 to d4) so we are going
@@ -650,7 +643,7 @@ class TimeSeriesExtractor():
                     time_ts.append(datetime(1970,1,1)) # set timestamp to 0 (=1970-01-01) if no data
 
                 now = datetime.now()
-                print('{} | elapsed: {}'.format(now, now-t0))
+                print('{} | elapsed: {}'.format(now, now-t0), flush=True)
 
 
             time_ts = np.array([np.datetime64(d).astype('<M8[s]') for d in time_ts])

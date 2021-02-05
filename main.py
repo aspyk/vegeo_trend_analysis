@@ -22,7 +22,7 @@ class Main():
         msg_vars = ['albedo', 'lai', 'evapo', 'dssf', 'lst']
         c3s_vars = ['al_bbdh','al_bbbh','al_spdh','al_spbh']
         c3s_vars = ['c3s_'+i for i in c3s_vars]
-        c3s_vars = [i+r for i in c3s_vars for r in ['_4km','_1km','_300m']]
+        c3s_vars = [i+r for i in c3s_vars for r in ['_AVHRR','_VGT','_PROBAV']]
         self.product_names = msg_vars + c3s_vars 
 
     def _parse_args(self):
@@ -112,7 +112,7 @@ class Main():
             self.chunks = generic.Splitter(*zone_idx)
             self.chunks.subdivide(self.args.master_chunk)
         elif self.args.input.type=='latloncsv':
-            self.chunks = generic.CoordinatesConverter(self.args.input.param, resol=self.args.product_tag[0].split('_')[-1])
+            self.chunks = generic.CoordinatesConverter(self.args.input.param, sensor=self.args.product_tag[0].split('_')[-1])
        
        
         # print info

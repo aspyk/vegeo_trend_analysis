@@ -104,16 +104,18 @@ class CoordinatesConverter():
     as Splitter class in order to be used independantly.
     """
 
-    def __init__(self, fpath, resol):
+    def __init__(self, fpath, sensor):
         self.fpath = fpath
-        self.c3s_resol = resol
+        self.sensor = sensor
         self.input = 'points'
         # return itself in a list to match Splitter format
         self.list = [self]
 
         ## Get the param corresponding to the resolution
-        param = {'4km':(4200, 10800, 0), '1km':(15680, 40320, 2), '300m':('xxx', 'xxx', 6)}
-        self.lat_len, self.lon_len, self.box_offset = param[self.c3s_resol]
+        param_sensor = {'AVHRR':'4km', 'VGT':'1km', 'PROBAV':'1km'}
+        param_resol = {'4km':(4200, 10800, 0), '1km':(15680, 40320, 2), '300m':('xxx', 'xxx', 6)}
+        self.c3s_resol = param_sensor[self.sensor]
+        self.lat_len, self.lon_len, self.box_offset = param_resol[self.c3s_resol]
         
         self._load_coor_from_csv()
         self._coor_to_indices_c3s()

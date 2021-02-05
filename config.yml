@@ -88,7 +88,7 @@ c3s_alspdh_4km:
     freq: '10D'
     var: 'AL_DH_B0'
 
-c3s_al_bbbh_1km:
+c3s_al_bbbh_PROBAV:
     root: '/data/c3s_pdf_live/MTDA/C3S_ALBB_BH_Global_1KM_V2/V2.0.1'
     <<: &param
         source: 'c3s'
@@ -99,8 +99,13 @@ c3s_al_bbbh_1km:
             - 'AL_BH_BB'
             - 'AL_BH_NI'
             - 'AL_BH_VI'
+
+c3s_al_bbbh_VGT:
+    root: '/data/c3s_pdf_live/MTDA/C3S_ALBB_BH_Global_1KM_V2/V2.0.1'
+    <<: *param
+    <<: *var
     
-c3s_al_bbbh_4km:
+c3s_al_bbbh_AVHRR:
     root: '/data/c3s_pdf_live/MTDA/C3S_ALBB_BH_Global_4KM_V2/V2.0.1'
     <<: *param
     <<: *var
