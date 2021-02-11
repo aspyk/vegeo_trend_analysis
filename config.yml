@@ -94,7 +94,7 @@ c3s_al_bbbh_PROBAV:
         source: 'c3s'
         mode: 'walk'  
         freq: '10D'
-    <<: &var
+    <<: &varbhbb
         var:
             - 'AL_BH_BB'
             - 'AL_BH_NI'
@@ -103,12 +103,31 @@ c3s_al_bbbh_PROBAV:
 c3s_al_bbbh_VGT:
     root: '/data/c3s_pdf_live/MTDA/C3S_ALBB_BH_Global_1KM_V2/V2.0.1'
     <<: *param
-    <<: *var
+    <<: *varbhbb
     
 c3s_al_bbbh_AVHRR:
     root: '/data/c3s_pdf_live/MTDA/C3S_ALBB_BH_Global_4KM_V2/V2.0.1'
     <<: *param
-    <<: *var
+    <<: *varbhbb
+
+c3s_al_bbdh_PROBAV:
+    root: '/data/c3s_pdf_live/MTDA/C3S_ALBB_DH_Global_1KM_V2/V2.0.1'
+    <<: *param
+    <<: &vardhbb
+        var:
+            - 'AL_DH_BB'
+            - 'AL_DH_NI'
+            - 'AL_DH_VI'
+
+c3s_al_bbdh_VGT:
+    root: '/data/c3s_pdf_live/MTDA/C3S_ALBB_DH_Global_1KM_V2/V2.0.1'
+    <<: *param
+    <<: *vardhbb
+    
+c3s_al_bbdh_AVHRR:
+    root: '/data/c3s_pdf_live/MTDA/C3S_ALBB_DH_Global_4KM_V2/V2.0.1'
+    <<: *param
+    <<: *vardhbb
 
 
  #    root_bbdh_4km: '/data/c3s_pdf_live/MTDA/C3S_ALBB_DH_Global_4KM_V2/V2.0.1'
