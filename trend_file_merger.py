@@ -150,11 +150,114 @@ def plot_trends(product, chunks, plot_name, plot_choice, scale_tendency, config,
     """
     
     import matplotlib.pyplot as plt
-    import cartopy.crs as ccrs
+    # import cartopy.crs as ccrs # not find on VITO ?
+    from mpl_toolkits.axes_grid1 import make_axes_locatable
     
-
+    ## TMP: harcoded file name
     input_trend_file = pathlib.Path(config['output_path']['trend']) / product / (phash+'_'+config['output_path']['merged_filename'])
+    input_trend_file = 'output_trend/c3s_al_bbdh_AVHRR/2bfc9d_CHUNK0_SUBCHUNK0_0_726_0_1.nc'
     output_path = pathlib.Path(config['output_path']['plot']) / product
+
+    ## If input are points, show a world map with scatter plot
+    if chunks.input=='points':
+        ## Read results stats
+        nc_output = Dataset(input_trend_file, 'r')
+
+        trends = {}
+        trends['pval'] = nc_output.variables['chunk_scores_p_val'][:].ravel()
+        trends['zval'] = nc_output.variables['chunk_scores_z_val'][:].ravel()
+        trends['len'] = nc_output.variables['chunk_scores_length'][:].ravel()
+        trends['sn']  = nc_output.variables['chunk_scores_Sn_val'][:].ravel()
+        nc_output.close()
+
+        #print(trends['sn'].shape)
+        #print(trends['sn'].min(), trends['sn'].max())
+
+        ## Set symmetrical color scale
+        if np.abs(trends['sn'].min()) > np.abs(trends['sn'].max()):
+            vn = -np.abs(trends['sn'].min())
+            vx = np.abs(trends['sn'].min())
+        else:
+            vn = -np.abs(trends['sn'].max())
+            vx = np.abs(trends['sn'].max())
+    
+        
+        fig, ax = plt.subplots()
+        
+        ptype = 2
+
+        if 1:
+            with h5py.File('c3s_land_mask.h5', 'r') as h:
+                lon = h['lon'][:]
+                lat = h['lat'][:]
+                mask = h['mask'][0,:,:]
+
+            dlon = (lon[1]-lon[0])/2.
+            dlat = (lat[1]-lat[0])/2.
+            #extent = [lon[0]-dlon, lon[-1]+dlon, lat[0]-dlat, lat[-1]+dlat]
+            extent = [lon[0]-dlon, lon[-1]+dlon, lat[-1]+dlat, lat[0]-dlat]
+
+            print('extent=', extent)
+
+            cm = 'jet'
+            cm = 'gist_ncar'
+            #mat = ax.imshow(data[0,::2,::2], cmap=cm)
+            print(mask.shape)
+            mat = ax.imshow(mask, extent=extent, cmap='terrain')
+        
+        # Add landval sites with scatter
+        if ptype==2:
+            cm = 'seismic'
+            #pts = (0.5*chunks.site_coor[['ilat', 'ilon']].values.T).astype(np.int32)
+            #print(pts.shape)
+            #scat = ax.scatter(pts[1], pts[0], c=trends['sn'], vmin=vn, vmax=vx, cmap=cm)
+            sc = ax.scatter(chunks.site_coor.LONGITUDE, chunks.site_coor.LATITUDE, c=trends['sn'], vmin=vn, vmax=vx, cmap=cm)
+            
+            # create an axes on the right side of ax. The width of cax will be 5%
+            # of ax and the padding between cax and ax will be fixed at 0.05 inch.
+            divider = make_axes_locatable(ax)
+            cax = divider.append_axes("right", size="5%", pad=0.05)
+            plt.colorbar(sc, cax=cax) 
+        
+        ax.set_aspect('equal')
+
+        if 1:
+            annot = ax.annotate("", xy=(0,0), xytext=(20,20),textcoords="offset points",
+                                bbox=dict(boxstyle="round", fc="w"),
+                                arrowprops=dict(arrowstyle="->"))
+            annot.set_visible(False)
+            
+            def update_annot(ind):
+            
+                pos = sc.get_offsets()[ind["ind"][0]]
+                annot.xy = pos
+                text = "{}, {}".format(" ".join(list(map(str,ind["ind"]))), 
+                                       " ".join([chunks.site_coor.NAME.values[n] for n in ind["ind"]]))
+                annot.set_text(text)
+                #annot.get_bbox_patch().set_facecolor(cmap(norm(c[ind["ind"][0]])))
+                annot.get_bbox_patch().set_alpha(0.4)
+            
+            
+            def hover(event):
+                vis = annot.get_visible()
+                if event.inaxes == ax:
+                    cont, ind = sc.contains(event)
+                    if cont:
+                        update_annot(ind)
+                        annot.set_visible(True)
+                        fig.canvas.draw_idle()
+                    else:
+                        if vis:
+                            annot.set_visible(False)
+                            fig.canvas.draw_idle()
+           
+            fig.canvas.mpl_connect("motion_notify_event", hover)
+
+        #plt.savefig('res_c3s.png')
+        plt.show()
+
+        sys.exit()
+
 
     # Shortcut to [ylim1:ylim2,xlim1:xlim2]
     zone_bnd = chunks.get_limits('global', 'slice') 
