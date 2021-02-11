@@ -482,8 +482,16 @@ def DEBUG_replace_dataset():
     #data[...] = np.ones(data.shape)
     f1.close()                        
 
-def main():
+def main(nsub=20, reader='all'):
     global process 
+
+    nsub=int(nsub)
+    if reader is 'all':
+        reader = ['M1','M2','M3','M4']
+    else:
+        reader = reader.split(',')
+
+    print(reader)
 
     #root = 'c3s_data'
     root = '/data/c3s_pdf_live/MTDA'
@@ -501,7 +509,6 @@ def main():
     process = psutil.Process(os.getpid())
     
     ## Load nsub validation sites coordinates
-    nsub = 200
     #site_coor = load_supersite_coor(root_path/'ALBEDOVAL2-database-20150630.json', nsub)
     site_coor = load_landval_sites('LANDVAL2.csv', nsub)
     #site_coor = load_landval_sites('LANDVAL2_short.csv', nsub) # test
@@ -528,23 +535,24 @@ def main():
 
         #test_toulouse(fname)
 
-        ti('t0')
-        
         ## M1 and M2
         print('h5py high level api based reader...')
-        test_supersites_M1(fname, landval_slice)
-        ti('t1')
-        test_supersites_M2(fname, landval_slice)
-        ti('t2')
+        if 'M1' in reader:
+            test_supersites_M1(fname, landval_slice)
+            ti('t1')
+        if 'M2' in reader:
+            test_supersites_M2(fname, landval_slice)
+            ti('t2')
             
         ## M3
         print('h5py low level api based reader...')
-        res = read_lowlevelAPI_h5py(fname, 'LAI', landval_data, resol)
-        ti('t3')
+        if 'M3' in reader:
+            res = read_lowlevelAPI_h5py(fname, 'LAI', landval_data, resol)
+            ti('t3')
 
-        res = read_lowlevelAPI_h5py2(fname, 'LAI', landval_data, resol)
-        
-        ti('t4')
+        if 'M4' in reader:
+            res = read_lowlevelAPI_h5py2(fname, 'LAI', landval_data, resol)
+            ti('t4')
 
 
 
@@ -552,6 +560,11 @@ def main():
     ti.show()
 
 if __name__=='__main__':
-    main()
+
+    if len(sys.argv)>1:
+        opt = {i.split('=')[0]:i.split('=')[1] for i in sys.argv[-1].split(':')}
+
+    print(opt)
+    main(**opt)
     
     #DEBUG_replace_dataset()
