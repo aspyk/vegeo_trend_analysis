@@ -109,12 +109,15 @@ def processInput_trends(subchunk, parent_iteration, child_iteration):
     tab_prof_valid = []
     tab_prof_zero = []
 
+    tsvar = 'time_series_chunk'
+    tsvar = 'AL_DH_BB'
+
     for jj_sub in range(subchunk.dim[0]):
     #for jj_sub in range(61,80): #debug
         # dimension of variable: time,x,y
         # preload all the y data here to avoid overhead due to calling Dataset.variables at each iteration in the inner loop
-        data_test0 = hdf_ts.variables['time_series_chunk'][:,jj_sub+offsety,offsetx:offsetx+subchunk.dim[1]]
-        #data_test0 = hdf_ts.variables['time_series_chunk'][:500,sub_chunks_x[ii_sub],:]
+        data_test0 = hdf_ts.variables[tsvar][:,jj_sub+offsety,offsetx:offsetx+subchunk.dim[1]]
+        #data_test0 = hdf_ts.variables[tsvar][:500,sub_chunks_x[ii_sub],:]
 
         for ii_sub in range(subchunk.dim[1]):
         #for ii_sub in range(55,100):
@@ -128,7 +131,7 @@ def processInput_trends(subchunk, parent_iteration, child_iteration):
             ## remove tie group
             data_test[1:][np.diff(data_test)==0.] = np.nan
     
-            #data_test=hdf_ts.variables['time_series_chunk'][:,sub_chunks_x[ii_sub],sub_chunks_y[jj_sub]]
+            #data_test=hdf_ts.variables[tsvar][:,sub_chunks_x[ii_sub],sub_chunks_y[jj_sub]]
             slope=999.0
 
             if b_deb:
@@ -226,7 +229,7 @@ def processInput_trends(subchunk, parent_iteration, child_iteration):
         ## Print efficiency stats
         if (jj_sub+1)%print_freq==0:
             elapsed = timer()-t00
-            data_stat = hdf_ts.variables['time_series_chunk'][:,jj_sub+1+offsety-print_freq:jj_sub+1+offsety,offsetx:offsetx+subchunk.dim[1]]
+            data_stat = hdf_ts.variables[tsvar][:,jj_sub+1+offsety-print_freq:jj_sub+1+offsety,offsetx:offsetx+subchunk.dim[1]]
             valid = 100.*(data_stat.size - np.count_nonzero(np.isnan(data_stat)))/data_stat.size
             eff = 1e6*elapsed/data_stat.size
             #print(subchunk.dim, data_test0.shape)
