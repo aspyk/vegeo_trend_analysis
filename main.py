@@ -113,6 +113,9 @@ class Main():
             self.chunks.subdivide(self.args.master_chunk)
         elif self.args.input.type=='latloncsv':
             self.chunks = generic.CoordinatesConverter(self.args.input.param, sensor=self.args.product_tag[0].split('_')[-1])
+            ## DEBUG: load only few points
+            #slist = ['FRENCHMAN_FLAT', 'BELMANIP_00332', 'Egypt#1', 'EL_FARAFRA', 'BELMANIP_00416']
+            #self.chunks = generic.CoordinatesConverter(self.args.input.param, sensor=self.args.product_tag[0].split('_')[-1], sub=slist)
        
        
         # print info

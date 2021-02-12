@@ -104,7 +104,7 @@ class CoordinatesConverter():
     as Splitter class in order to be used independantly.
     """
 
-    def __init__(self, fpath, sensor):
+    def __init__(self, fpath, sensor, sub=None):
         self.fpath = fpath
         self.sensor = sensor
         self.input = 'points'
@@ -117,20 +117,25 @@ class CoordinatesConverter():
         self.c3s_resol = param_sensor[self.sensor]
         self.lat_len, self.lon_len, self.box_offset = param_resol[self.c3s_resol]
         
-        self._load_coor_from_csv()
+        self._load_coor_from_csv(sub)
         self._coor_to_indices_c3s()
 
-    def _load_coor_from_csv(self, nsub=0):
+    def _load_coor_from_csv(self, sub=None):
         """
         Load reference sites where to perform quality monitoring from a csv file.
         CSV file must have a LATITUDE and LONGITUDE columns.
+        Parameters
+        sub: - int: load the first sub rows
+             - list of string: load sites with NAME in the list
         """
         df = pd.read_csv(self.fpath, sep=';', index_col=0)
 
-        if nsub>0:
-            self.site_coor = df[:nsub]
-        else:
+        if sub is None:
             self.site_coor = df
+        elif isinstance(sub, int):
+            self.site_coor = df[:nsub]
+        elif isinstance(sub, list):
+            self.site_coor = df.loc[df['NAME'].isin(sub)]
 
     def _coor_to_indices_c3s(self):
         """
@@ -182,7 +187,21 @@ class CoordinatesConverter():
         elif fmt=='slice':
             return self.slice
 
+    def get_row_by_name(self, site_name):
+        return self.site_coor.loc[self.site_coor['NAME'] == site_name]
         
+    def get_box_around(self, site, size):
+        """
+        Return lat and lon slices to pick up a box of shape (size, size) around a site
+        """
+        site_data = self.get_row_by_name(site)
+        ilat,ilon = site_data[['ilat', 'ilon']].values[0] # here values return [[xx,yy]]
+        half_size = int(size/2.)
+        if (size%2)==0: 
+            return (slice(ilat-half_size, ilat+half_size), slice(ilon-half_size, ilon+half_size))
+        else:
+            return (slice(ilat-half_size, ilat+half_size+1), slice(ilon-half_size, ilon+half_size+1))
+
 
 def plot2Darray(v, var='var'):
     """Debug function to plot a 2D array in terminal"""
