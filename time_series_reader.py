@@ -350,6 +350,9 @@ class TimeSeriesExtractor():
     def _extract_points(self, var, dtype):
         """
         This version load all the dataset and extract location from memory
+
+        Direct load may be faster until a certain number of point depending on the system.
+        On VITO benchmark give a value of 150.
         
         Notes
         -----
@@ -374,20 +377,32 @@ class TimeSeriesExtractor():
             print('warning: no platform attribute')
         """
         chunk = self.chunk
-        ti = SimpleTimer()
-        if self.b_h5py_r:
-            data = self.h5f[var][:]
-            ti('h5py load time for {}:'.format(var))
-        else:
-            data = self.h5f.variables[var][:]
-            ti('netCDF4 load time for {}:'.format(var))
+            
         if chunk.box_offset==0:
             prod_chunk = np.zeros((chunk.dim[1], 1, 1), dtype=dtype)
         else:
             prod_chunk = np.zeros((chunk.dim[1], 2*chunk.box_offset, 2*chunk.box_offset), dtype=dtype)
-        for ii,s in enumerate(chunk.get_limits('global', 'slice')):
-            prod_chunk[ii] = data[s]
-        del(data)
+            
+        ti = SimpleTimer()
+        # check the number of points to load
+        if chunk.dim[1] > 150: # two-step load
+            if self.b_h5py_r:
+                data = self.h5f[var][:]
+                ti('h5py_indirect load time for {}:'.format(var))
+            else:
+                data = self.h5f.variables[var][:]
+                ti('netCDF4 load time for {}:'.format(var))
+            
+            for ii,s in enumerate(chunk.get_limits('global', 'slice')):
+                prod_chunk[ii] = data[s]
+            del(data)
+            ti('memory load time for {}:'.format(var))
+
+        else: # direct load
+            for ii,s in enumerate(chunk.get_limits('global', 'slice')):
+                prod_chunk[ii] = self.h5f[var][s]
+            ti('h5py_direct load time for {}:'.format(var))
+        
         return prod_chunk
 
     def _get_c3s_albedo_points(self):
@@ -410,16 +425,18 @@ class TimeSeriesExtractor():
             # - *_ERR > 0.2
             # - AGE > 30
             b_print_sel = 0
-            prod_chunk[(prod_chunk<0) | (prod_chunk>10000)] = -9999
-            if b_print_sel: print(np.count_nonzero(prod_chunk==-9999))
-            prod_chunk[~((q_chunk & 0b11) == 0b01)] = -9999 # if bit 1 and 0 are not land (= 01) set -9999
-            if b_print_sel: print(np.count_nonzero(prod_chunk==-9999))
-            prod_chunk[(q_chunk & (1<<7)) == 1] = -9999 # if bit 7 == 1 set -9999
-            if b_print_sel: print(np.count_nonzero(prod_chunk==-9999))
-            prod_chunk[error_chunk > 2000] = -9999 
-            if b_print_sel: print(np.count_nonzero(prod_chunk==-9999))
-            prod_chunk[age_chunk > 30] = -9999 
-            if b_print_sel: print(np.count_nonzero(prod_chunk==-9999))
+            # -9999 is used instead of np.nan because data is of type int
+            discard = -9999
+            prod_chunk[(prod_chunk<0) | (prod_chunk>10000)] = discard
+            if b_print_sel: print(self._count_nan(prod_chunk))
+            prod_chunk[~((q_chunk & 0b11) == 0b01)] = discard # if bit 1 and 0 are not land (= 01) set np.nan
+            if b_print_sel: print(self._count_nan(prod_chunk))
+            prod_chunk[(q_chunk & (1<<7)) == 1] = discard # if bit 7 == 1 set np.nan
+            if b_print_sel: print(self._count_nan(prod_chunk))
+            prod_chunk[error_chunk > 2000] = discard 
+            if b_print_sel: print(self._count_nan(prod_chunk))
+            prod_chunk[age_chunk > 30] = discard 
+            if b_print_sel: print(self._count_nan(prod_chunk))
             #sys.exit()
             #prod_chunk = prod_chunk.
 
@@ -432,16 +449,23 @@ class TimeSeriesExtractor():
                 threshold = 12
             if self.chunk.c3s_resol=='300m':
                 threshold = 108
-            q_mask = np.count_nonzero(~(prod_chunk==-9999), axis=(1,2)) >= threshold
+            q_mask = np.count_nonzero(~(prod_chunk==discard), axis=(1,2)) >= threshold
             print('valid : {0} / {1}'.format(np.count_nonzero(q_mask), self.chunk.dim[1]) )
             #print('invalid indices:')
             #print(np.where(q_mask==0)[0])
             d[v] = 1e-4 * prod_chunk
-            d[v] = d[v].mean(axis=(1,2))
+            d[v][ d[v]==discard*1e-4 ] = np.nan # replace discard value by nan
+            d[v] = np.nanmean(d[v], axis=(1,2))
             d[v] = np.where(q_mask,  d[v], np.nan)
             d[v].reshape((1,-1)) # fake 2D array (1,nb_pts)
 
         return d
+
+    def _count_nan(a):
+        return np.count_nonzero(np.isnan(a))    
+
+    def _count_notnan(a):
+        return np.count_nonzero(~np.isnan(a))    
 
     def extract_product(self):
         chunk = self.chunk
