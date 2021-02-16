@@ -300,8 +300,8 @@ class TimeSeriesExtractor():
                     return date.replace(day=3)
 
             # Create fake formated date and set it as index
-            df['fake_ref'] = df.index.to_series().map(test)
-            df = df.reset_index().set_index('fake_ref')
+            df['global_id'] = df.index.to_series().map(test)
+            df = df.reset_index().set_index('global_id')
 
             # debug
             #df = df.loc["2019-05-01":"2019-07-31"]
@@ -309,11 +309,10 @@ class TimeSeriesExtractor():
 
             # Create a new theoretical df based only on dseries as index
             self.df_full = pd.DataFrame(index=self.dseries)
-            self.df_full.index.name = 'fake_ref'
+            self.df_full.index.name = 'global_id'
 
-            # Join with valid data, empty date will automatically filled with NaN or NaT
+            # Join with valid data, empty date will automatically be filled with NaN or NaT
             self.df_full = self.df_full.join(df)
-            #print(self.df_full)
 
 
             # Show summary of valid data by year (or month)
@@ -324,7 +323,14 @@ class TimeSeriesExtractor():
             
             # datetime index back to column to be easily selected 
             self.df_full = self.df_full.reset_index() 
-            #print(self.df_full)
+
+            # Add helper columns
+            # global_id is a timestamp like starting at 0 from 1970-01-01 on a 36 based year
+            # useful to merge different cache file or with // or % operator to have year or position in year
+            fd = self.df_full['global_id']
+            fd = pd.to_datetime(fd).apply(lambda t: (t.year-1970)*36 + (t.month-1)*3 + t.day-1)
+            self.df_full['global_id'] = fd 
+            #self.df_full = self.df_full.set_index('global_id')
 
 
             ## Loop on these files and yield
@@ -378,10 +384,7 @@ class TimeSeriesExtractor():
         """
         chunk = self.chunk
             
-        if chunk.box_offset==0:
-            prod_chunk = np.zeros((chunk.dim[1], 1, 1), dtype=dtype)
-        else:
-            prod_chunk = np.zeros((chunk.dim[1], 2*chunk.box_offset, 2*chunk.box_offset), dtype=dtype)
+        prod_chunk = np.zeros((chunk.dim[1], chunk.box_size, chunk.box_size), dtype=dtype)
             
         ti = SimpleTimer()
         # check the number of points to load
@@ -700,6 +703,7 @@ class TimeSeriesExtractor():
                     out_var.append({'type':np.float, 'name':name, 'data':data})
                 out_var.append({'type':np.int64, 'name':'ts_dates', 'data':time_ts})
                 out_var.append({'type':'S2', 'name':'point_names', 'data':np.array(chunk.site_coor['NAME'])})
+                out_var.append({'type':np.uint16, 'name':'global_id', 'data':self.df_full['global_id'].values})
                 self._write_ts_chunk2(chunk, out_var)
 
             #self.plot_histogram(tseries)

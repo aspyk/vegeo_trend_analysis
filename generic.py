@@ -113,9 +113,9 @@ class CoordinatesConverter():
 
         ## Get the param corresponding to the resolution
         param_sensor = {'AVHRR':'4km', 'VGT':'1km', 'PROBAV':'1km'}
-        param_resol = {'4km':(4200, 10800, 0), '1km':(15680, 40320, 2), '300m':('xxx', 'xxx', 6)}
+        param_resol = {'4km':(4200, 10800, 1), '1km':(15680, 40320, 4), '300m':('xxx', 'xxx', 12)}
         self.c3s_resol = param_sensor[self.sensor]
-        self.lat_len, self.lon_len, self.box_offset = param_resol[self.c3s_resol]
+        self.lat_len, self.lon_len, self.box_size = param_resol[self.c3s_resol]
         
         self._load_coor_from_csv(sub)
         self._coor_to_indices_c3s()
@@ -160,10 +160,13 @@ class CoordinatesConverter():
         df = df.sort_values(by=['ilat', 'ilon'])
     
         ## Make a bounding box around the coordinate
-        if self.box_offset==0: 
-            self.slice = [(0, lat, lon) for lat,lon in df[['ilat', 'ilon']].values]
+        half_size = int(self.box_size/2.)
+        if (self.box_size%2)==0: 
+            #self.slice = [(0, lat, lon) for lat,lon in df[['ilat', 'ilon']].values]
+            self.slice = [(0, slice(ilat-half_size, ilat+half_size), slice(ilon-half_size, ilon+half_size)) for ilat,ilon in df[['ilat', 'ilon']].values]
         else:
-            self.slice = [(0, slice(lat-self.box_offset, lat+self.box_offset), slice(lon-self.box_offset, lon+self.box_offset)) for lat,lon in df[['ilat', 'ilon']].values]
+            #self.slice = [(0, slice(lat-self.box_offset, lat+self.box_offset), slice(lon-self.box_offset, lon+self.box_offset)) for lat,lon in df[['ilat', 'ilon']].values]
+            self.slice = [(0, slice(ilat-half_size, ilat+half_size+1), slice(ilon-half_size, ilon+half_size+1)) for ilat,ilon in df[['ilat', 'ilon']].values]
         
         self.site_coor = df
         
@@ -190,17 +193,25 @@ class CoordinatesConverter():
     def get_row_by_name(self, site_name):
         return self.site_coor.loc[self.site_coor['NAME'] == site_name]
         
-    def get_box_around(self, site, size):
+    def get_box_around(self, site_name, size):
         """
         Return lat and lon slices to pick up a box of shape (size, size) around a site
         """
-        site_data = self.get_row_by_name(site)
+        site_data = self.get_row_by_name(site_name)
         ilat,ilon = site_data[['ilat', 'ilon']].values[0] # here values return [[xx,yy]]
         half_size = int(size/2.)
         if (size%2)==0: 
             return (slice(ilat-half_size, ilat+half_size), slice(ilon-half_size, ilon+half_size))
         else:
             return (slice(ilat-half_size, ilat+half_size+1), slice(ilon-half_size, ilon+half_size+1))
+
+    def get_box_from_topleft(self, site_name, size):
+        """
+        Return lat and lon slices to pick up a box of shape (size, size) around a site
+        """
+        site_data = self.get_row_by_name(site_name)
+        ilat,ilon = site_data[['ilat', 'ilon']].values[0] # here values return [[xx,yy]]
+        return (slice(ilat, ilat+size), slice(ilon, ilon+size))
 
 
 def plot2Darray(v, var='var'):

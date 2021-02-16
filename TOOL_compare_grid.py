@@ -21,19 +21,47 @@ class Main:
             lon = h['lon'][slon]
             lat = h['lat'][slat]
 
+            print(lat, lon)
+
             dlon = np.diff(h['lon'][:10]).mean()/2.
             dlat = np.diff(h['lat'][:10]).mean()/2.
             #print("dlat,dlon=", dlat,dlon)
         
         xlon = np.linspace(lon[0]-dlon, lon[-1]+dlon, len(lon)+1)
-        ylat = np.linspace(lat[-1]+dlat, lat[0]-dlat, len(lat)+1)
+        ylat = np.linspace(lat[0]-dlat, lat[-1]+dlat, len(lat)+1)
 
         x, y = np.meshgrid(xlon, ylat)
         
-        self.ax.plot(x, y, c=self.col[self.icol], lw=1) # use plot, not scatter
-        self.ax.plot(np.transpose(x), np.transpose(y), c=self.col[self.icol]) # add this here
+        self.ax.plot(x, y, c=self.col[self.icol], lw=1)
+        self.ax.plot(np.transpose(x), np.transpose(y), c=self.col[self.icol]) 
         self.icol += 1
         
+    def save_avhrr_ref_corner(self, f, out_csv):
+        """
+        Save as a new csv file the lat/lon coordinate of the top-left corner of
+        the AVHRR pixel containing the initial coor of the landval sites.
+        It will then be used as reference to extract fine grid.
+        """
+        
+
+        with h5py.File(f, mode='r') as h:
+            dlon = np.diff(h['lon'][:10]).mean()/2.
+            dlat = np.diff(h['lat'][:10]).mean()/2.
+
+            latlon_topleft = np.array([[h['lat'][ilat]-dlat, h['lon'][ilon]-dlon] for ilat,ilon in self.coor_avhrr.site_coor[['ilat', 'ilon']].values])
+
+        
+        print(latlon_topleft)
+
+        df_new = self.coor_avhrr.site_coor.copy()
+
+        df_new['LATITUDE'] = latlon_topleft.T[0]
+        df_new['LONGITUDE'] = latlon_topleft.T[1]
+        df_new = df_new.sort_index()
+        df_new.to_csv(out_csv,
+                      columns=['LATITUDE','LONGITUDE','NAME'],
+                      sep=';')
+
 
     def plot_scatter(self, lat, lon):
         self.ax.scatter(lon, lat)
@@ -94,15 +122,32 @@ class Main:
         assert ('AVHRR' in f1) 
         assert ('VGT' in f2) 
 
+        #origin = 'center'
+        origin = 'topleft'
+
         ## Get the input data
         self.coor_avhrr = generic.CoordinatesConverter(csvcoorfile, sensor='AVHRR')
-        self.coor_vgt = generic.CoordinatesConverter(csvcoorfile, sensor='VGT')
+        if origin=='center':
+            self.coor_vgt = generic.CoordinatesConverter(csvcoorfile, sensor='VGT')
+        elif origin=='topleft':
+            out_avhrr_csv_name = 'LANDVAL2_avhrr_topleft.csv'
+            self.save_avhrr_ref_corner(f1, out_avhrr_csv_name)
+            self.coor_vgt = generic.CoordinatesConverter(out_avhrr_csv_name, sensor='VGT')
 
         ## Get the indices of the box around a point
         #pt = 'DOM1'
         pt = 'FRENCHMAN_FLAT'
+
+        print(self.coor_avhrr.get_row_by_name(pt))
+        print(self.coor_vgt.get_row_by_name(pt))
+
+        #sys.exit()
+
         slat1, slon1 = self.coor_avhrr.get_box_around(pt, 1)
-        slat2, slon2 = self.coor_vgt.get_box_around(pt, 4)
+        if origin=='center':
+            slat2, slon2 = self.coor_vgt.get_box_around(pt, 4)
+        elif origin=='topleft':
+            slat2, slon2 = self.coor_vgt.get_box_from_topleft(pt, 4)
 
         #print(slat1, slon1)
         #print(slat2, slon2)
@@ -124,6 +169,9 @@ class Main:
 
         ## Plot the point
         lat, lon = self.coor_avhrr.get_row_by_name(pt)[['LATITUDE', 'LONGITUDE']].values.T
+        self.plot_scatter(lat, lon)
+        
+        lat, lon = self.coor_vgt.get_row_by_name(pt)[['LATITUDE', 'LONGITUDE']].values.T
         self.plot_scatter(lat, lon)
 
     def show(self):
