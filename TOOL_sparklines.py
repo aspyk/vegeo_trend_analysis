@@ -169,10 +169,15 @@ class Sparkline():
         if mode=='classical':
 
             if self.figsize is None:
-                self.figsize = (22, 4)
+                self.figsize = (18, 2)
             self.fig, self.ax = plt.subplots(1, 1, figsize=self.figsize, **kwags)
 
-            yrange = (0.0, 0.6)
+            if 0:
+                dmin = self.data_group.gdmin
+                dmax = self.data_group.gdmax
+                yrange = (dmin, dmax)
+            else:
+                yrange = (0.0, 0.25)
 
             ## Add sensor time range
             d = yrange[1]-yrange[0]
@@ -209,11 +214,11 @@ class Sparkline():
 
             ## Add data
             for ts in data:
-                self.ax.plot(ts.iloc[:,0].values, ts.iloc[:,1].values)
+                self.ax.plot(ts.iloc[:,0].values, ts.iloc[:,1].values, '-', lw=1, ms=2)
                 #self.ax.plot(pd.to_datetime(ts.iloc[:,0].values, unit='s'), ts.iloc[:,1].values)
 
             
-            self.ax.set_ylim(0.0, 0.6)
+            self.ax.set_ylim(*yrange)
             
             self.ax.set_xlim(tmin, tmax)
             #self.fig.autofmt_xdate()
@@ -360,7 +365,8 @@ class TimeSeries():
             #data = data[:,:10]
             #self.point_names = self.point_names[:10]
             
-            sites = ['FRENCHMAN_FLAT', 'BELMANIP_00332', 'Egypt#1', 'EL_FARAFRA']
+            #sites = ['FRENCHMAN_FLAT', 'BELMANIP_00332', 'Egypt#1', 'EL_FARAFRA', 'BELMANIP_00416', 'DOM1']
+            sites = ['DOM1']
             id_sites = [i for i, j in enumerate(self.point_names) if j in sites]
             data = data[:,id_sites]
             self.point_names = [self.point_names[i] for i in id_sites]
@@ -381,7 +387,7 @@ class TimeSeries():
 
 if __name__ == "__main__":
 
-    filelist = [i for i in sys.argv if i.endswith('.nc')] 
+    filelist = [i for i in sys.argv if i[-3:] in ['.nc', '.h5']] 
 
     tsg = TimeSeriesGroup(filelist)
 
@@ -391,5 +397,7 @@ if __name__ == "__main__":
     #s.run('wrap')
     #s.run(vname, 'oneline')
     #s.run(vname, 'oneline', time_range=('1998-01-01', '2014-12-31'))
-    s.run(vname, 'classical', time_range=('1998-01-01', '2014-12-31'))
+    #s.run(vname, 'classical', time_range=('2000-01-01', '2000-12-31'))
+    s.run(vname, 'classical', time_range=('1981-01-01', '2020-12-31'))
+    #s.run(vname, 'classical')
     

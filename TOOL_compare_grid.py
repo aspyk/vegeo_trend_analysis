@@ -190,8 +190,6 @@ class Main:
 if __name__=='__main__':
 
     kwargs = tools.parse_args()
-    for k,v in kwargs.items():
-        print('-- {} : {}'.format(k,v))
 
     m = Main()
     #m.plot_grid(**kwargs) # input args:  f1=<path>:f2=<path>

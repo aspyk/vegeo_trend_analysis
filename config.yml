@@ -157,6 +157,7 @@ c3s_al_bbdh_AVHRR:
  # Dir to store cache and output
 output_path:
     extract: './output_extract'
+    merge: './output_merge'
     trend: './output_trend'
     plot: './output_plot'
     merged_filename: 'merged_trends.nc'
