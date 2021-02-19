@@ -109,6 +109,14 @@ class Main:
             lat = h['lat'][:]
             mask = (h['QFLAG'][:] & 0b11)==1
 
+            if 0:
+                mask2 = (h['QFLAG'][0,:,:] & 0b11)==1
+                #mask2 = h['AL_DH_BB'][0,:,:]
+                print(mask2.shape)
+                plt.imshow(mask2)
+                plt.show()
+                sys.exit()
+
         with h5py.File('c3s_land_mask.h5', mode='w') as h:
             h.create_dataset('lon', data=lon, compression='gzip')
             h.create_dataset('lat', data=lat, compression='gzip')
@@ -193,7 +201,9 @@ if __name__=='__main__':
 
     m = Main()
     #m.plot_grid(**kwargs) # input args:  f1=<path>:f2=<path>
+    
     #m.extract_land_mask(**kwargs) # input args: f1=<path>
+    
     m.plot_extract_coor(**kwargs)
     m.show()
 
