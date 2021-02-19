@@ -33,12 +33,13 @@ from tools import SimpleTimer
 
 
 class TimeSeriesExtractor():
-    def __init__(self, product, start, end, chunks, config, phash):
+    def __init__(self, product, start, end, chunks, config, phash, b_delete):
         self.start = start
         self.end = end
         self.product = product
         self.chunks = chunks
         self.hash = phash
+        self.b_delete = b_delete
         
         self.config = config[self.product]
 
@@ -550,48 +551,7 @@ class TimeSeriesExtractor():
 
         return prod_chunk
     
-    def _write_ts_chunk(self, chunk, tseries, date_ts=None, add_var=[]):
-        """Write time series of the data for each master iteration"""
-        write_file = self.output_path / self.product / (self.hash+'_timeseries_'+'_'.join(chunk.get_limits('global', 'str'))+'.nc')
-        write_file = write_file.as_posix()
-    
-        ds = netCDF4.Dataset(write_file, 'w', format='NETCDF4')
-        
-        ds.createDimension('x', tseries.shape[0])
-        ds.createDimension('y', tseries.shape[1])
-        ds.createDimension('z', tseries.shape[2])
-        ds.createVariable('time_series_chunk', np.float, ('x','y','z'), zlib=True)
-        
-        ds.variables['time_series_chunk'][:] = tseries
-            
-        if date_ts is not None:
-            assert date_ts.shape[0]==tseries.shape[0]
-            ds.createVariable('time_series_date', np.int64, ('x',), zlib=True)
-            
-            ds.variables['time_series_date'][:] = date_ts
-        
-        ## Add additional variables if any
-        # Additional variable have to be given in a list as dict with the following keys:
-        # 'name': string, name of the variable
-        # 'data': numpy array, the actual data 
-        # 'type': string, representing the data type
-        if len(add_var)>0:
-            for v in add_var:
-                tdim = []
-                for idd,d in enumerate(v['data'].shape):
-                    dname = '{}_d{}'.format(v['name'], idd)
-                    ds.createDimension(dname, d)
-                    tdim.append(dname)
-                tdim = tuple(tdim)
-
-                var = ds.createVariable(v['name'], v['type'], tdim, zlib=True)
-                var_data = v['data']
-                var[:] = var_data
-        
-        ds.close()
-        print(">>> Data chunk written to:", write_file)
-
-    def _write_ts_chunk2(self, chunk, out_var):
+    def _write_ts_chunk(self, out_var):
         """
         Write time series of the data
         Variable have to be given in a list as dict with the following keys:
@@ -599,10 +559,8 @@ class TimeSeriesExtractor():
         'data': numpy array, the actual data 
         'type': string, representing the data type
         """
-        write_file = self.output_path / self.product / (self.hash+'_timeseries_'+'_'.join(chunk.get_limits('global', 'str'))+'.nc')
-        write_file = write_file.as_posix()
     
-        ds = netCDF4.Dataset(write_file, 'w', format='NETCDF4')
+        ds = netCDF4.Dataset(self.write_file, 'w', format='NETCDF4')
         
         if len(out_var)>0:
             for v in out_var:
@@ -619,12 +577,28 @@ class TimeSeriesExtractor():
         
         ds.close()
         print(">>> Data chunk written to:", write_file)
+        return write_file
         
+    def _check_previous_cache(self):
+        """
+        Check if cache file already exists and must be overwritten
+        """
+        write_file = self.output_path / self.product / (self.hash+'_timeseries_'+'_'.join(self.chunk.get_limits('global', 'str'))+'.nc')
+
+        self.write_file = write_file
+
+        if not self.b_delete:
+            if write_file.is_file():
+                print ('INFO: Cache file {} already exists. Use -d option to overwrite it.'.format(write_file))
+                return True
+
+
 
     def run(self):
         b_use_mask = 0
 
         if b_use_mask: self.get_lw_mask()
+        write_files = []
        
         ## Loop on chunks
         for chunk in self.chunks.list:
@@ -636,6 +610,10 @@ class TimeSeriesExtractor():
             elif chunk.input=='points':
                 print('***', 'SIZE {} points'.format(chunk.dim[1]))
 
+            ## Check if cache file already exists
+            if self._check_previous_cache(): 
+                write_files.append(self.write_file)
+                continue
 
             ## Initialize time series with array of nan
             data_ts = {}
@@ -693,23 +671,21 @@ class TimeSeriesExtractor():
 
 
             ## Try with a more generic writer
-            if 0:
-                add_var = []
-                add_var.append({'type':'S2', 'name':'point_names', 'data':np.array(chunk.site_coor['NAME'])})
-                self._write_ts_chunk(chunk, data_ts, time_ts, add_var)
-            else:
-                out_var = []
-                for name, data in data_ts.items():
-                    out_var.append({'type':np.float, 'name':name, 'data':data})
-                out_var.append({'type':np.int64, 'name':'ts_dates', 'data':time_ts})
-                out_var.append({'type':'S2', 'name':'point_names', 'data':np.array(chunk.site_coor['NAME'])})
-                out_var.append({'type':np.uint16, 'name':'global_id', 'data':self.df_full['global_id'].values})
-                self._write_ts_chunk2(chunk, out_var)
+            out_var = []
+            for name, data in data_ts.items():
+                out_var.append({'type':np.float, 'name':name, 'data':data})
+            out_var.append({'type':np.int64, 'name':'ts_dates', 'data':time_ts})
+            out_var.append({'type':'S2', 'name':'point_names', 'data':np.array(chunk.site_coor['NAME'])})
+            out_var.append({'type':np.uint16, 'name':'global_id', 'data':self.df_full['global_id'].values})
+            self._write_ts_chunk(out_var)
+            write_files.append(self.write_file)
 
             #self.plot_histogram(tseries)
             #self.plot_histogram(tseries)
             #self.plot_image_series(tseries)
    
             del data_ts       
+
+        return write_files
     
 

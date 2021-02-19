@@ -24,6 +24,8 @@ class Main():
         c3s_vars = [i+r for i in c3s_vars for r in ['_AVHRR','_VGT','_PROBAV']]
         self.product_names = msg_vars + c3s_vars 
 
+
+
     def _parse_args(self):
         parser = argparse.ArgumentParser(description='The parameters are being given as arguments for input time series,', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
         parser.add_argument('-t0','--start_date',
@@ -50,7 +52,7 @@ class Main():
                             required=True)    
         parser.add_argument('-a','--action',
                             help='Action to run between extract, group, trend, plot',
-                            choices=['extract', 'append', 'trend', 'merge', 'plot'],
+                            choices=['extract', 'merge', 'trend', 'join', 'plot'],
                             nargs='+',
                             required=True)
         parser.add_argument('-n_master','--master_chunk',
@@ -118,15 +120,18 @@ class Main():
                 self.chunks = generic.CoordinatesConverter(self.args.input.param, sensor=self.args.product_tag[0].split('_')[-1], sub=slist)
        
        
-        # print info
+        ## print info
         print("Run {4} of {0} in {1} from {2} to {3}".format(green(','.join(self.args.product_tag)),
                                                              green(','.join(self.chunks.get_limits('global', 'str'))),
                                                              green(self.args.start_date.isoformat()),
                                                              green(self.args.end_date.isoformat()), 
                                                              green(','.join(self.args.action))) )
-    
+        ## Compute hash
         self.dic_hash = {}
         for p in self.args.product_tag:
+            ### Trim dates for each product
+            #start = max(self.args.start_date, self.sensor_dates[p])
+            #self.dic_hash[p] = generic.get_case_hash(p, start, end, self.chunks)
             self.dic_hash[p] = generic.get_case_hash(p, self.args.start_date, self.args.end_date, self.chunks)
             print(p, self.dic_hash[p] )
     
@@ -148,17 +153,37 @@ class Main():
         # EXTRACT
         #------------------------------------------------#
         if 'extract' in self.args.action:
-            print('>>> Extract raw data...')
+            print('>>> Extract time series...')
     
             import time_series_reader
+            
+            cache_files = []
+            for prod in self.args.product_tag:
+                print('  Process {0}'.format(prod))
+                
+                list_args = [prod, self.args.start_date, self.args.end_date, self.chunks, self.yfile, self.dic_hash[prod], self.args.delete_cache]
+                extractor = time_series_reader.TimeSeriesExtractor(*list_args)
+                cache = extractor.run()
+                cache_files += cache
+                print("cache_files=", cache_files)
+    
+        #------------------------------------------------#
+        # MERGE
+        #------------------------------------------------#
+        if 'merge' in self.args.action:
+            print('>>> Merge time series...')
+    
+            import time_series_merger
     
             for prod in self.args.product_tag:
                 print('  Process {0}'.format(prod))
                 
-                list_args = [prod, self.args.start_date, self.args.end_date, self.chunks, self.yfile, self.dic_hash[prod]]
-                extractor = time_series_reader.TimeSeriesExtractor(*list_args)
-                extractor.run()
-    
+                merger = time_series_merger.TimeSeriesMerger(cache_files)
+                merged_prod = merger.run()
+            
+            self.args.product_tag = [merged_prod]
+            self.dic_hash[merged_prod] = 'merged'
+
         #------------------------------------------------#
         # TREND
         #------------------------------------------------#
@@ -174,10 +199,10 @@ class Main():
                 estimate_trends_from_time_series.compute_trends(*list_args)
     
         #------------------------------------------------#
-        # MERGE
+        # JOIN
         #------------------------------------------------#
-        if 'merge' in self.args.action:
-            print('>>> Merge trends...')
+        if 'join' in self.args.action:
+            print('>>> Join trends...')
     
             import trend_file_merger
     

@@ -305,10 +305,17 @@ def main():
     main_iteration = 0
     
     for chunk in param.chunks.list:
-        
-        param.input_file = param.input_path / (param.hash+'_timeseries_'+ '_'.join(chunk.get_limits('global','str'))+'.nc')
+       
+        ## Check if it's a merged file or an original one
+        if param.product.endswith('_MERGED'):
+            list_of_paths = param.input_path.glob('*')
+            latest_path = max(list_of_paths, key=lambda p: p.stat().st_ctime)
+            param.input_file = latest_path
+        else:
+            param.input_file = param.input_path / (param.hash+'_timeseries_'+ '_'.join(chunk.get_limits('global','str'))+'.nc')
         print('> calculating trend for the chunk:') 
         print(param.input_file.as_posix())
+
         if chunk.input=='box':
             print('***Row/y_SIZE***', chunk.dim[0], '***Col/x_SIZE***', chunk.dim[1]) 
             
@@ -354,7 +361,7 @@ def compute_trends(*args):
             self.hash = h
             self.input = pathlib.Path(config['output_path']['extract'])
             self.output = pathlib.Path(config['output_path']['trend'])
-            self.product_tag = prod
+            self.product = prod
             self.nproc = np
             self.chunks = chunks
             self.b_delete = b_delete
