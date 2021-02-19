@@ -5,28 +5,34 @@ import pathlib
 import tools
 import pandas as pd
 import sys
+import itertools
 
 
 class TimeSeriesMerger():
     """
-    Merge two cache files f1 and f2.
-    f1 is overwritten by f2 where global_id's overlap.
+    Merge several cache files into one. The last file overwrite the previous ones:
+    If we have <arg1> <arg2> <arg3> ...
+    arg1 is overwritten by arg2, then arg2 and arg1 by arg3 etc..
     """
 
-    def __init__(self, f1, f2, ):
+    def __init__(self, fname_list, prod_list=None):
+        """
+        fname_list: list of cache files to merge
 
-        f1 = pathlib.Path(f1)
-        f2 = pathlib.Path(f2)
+        prod_list: l
+        """
+
+        files =  [pathlib.Path(i) for i in fname_list]
 
         # get the product from initial cache file path or from attribute of merged time series
-        v1 = self._get_product(f1)
-        v2 = self._get_product(f2)
-        assert v1==v2, ('Not the same product:', v1, v2)
-        self.product = v1
+        prod = [self._get_product(f) for f in files]
+        assert len(set(prod)) <= 1, ('Not the same product in:', prod)
+        self.product = prod[0]
 
-        self.f1 = f1
-        self.f2 = f2
-        self.output_path = pathlib.Path('./output_merge')
+        print("Product to merge:", self.product)
+
+        self.files = files
+        self.output_path = pathlib.Path('./output_extract') / (self.product+'_MERGED')
         self.output_path.mkdir(parents=True, exist_ok=True)
 
     def _get_product(self, path):
@@ -93,60 +99,56 @@ class TimeSeriesMerger():
         return meta, var
 
 
-    def merge(self):
+    def run(self):
         
-        ## Read both dataset 
-        meta1, var1 = self._get_file_vars(self.f1)
-        meta2, var2 = self._get_file_vars(self.f2)
+        ## Read all datasets
+        meta_in = []
+        var_in = []
+        for f in self.files:
+            m, v = self._get_file_vars(f)
+            meta_in.append(m)
+            var_in.append(v)
         
         ## suppose for now that all cache files have the same variables and landval sites
-        assert np.array_equal(meta1['point_names'], meta2['point_names']), 'LANDVAL sites are not equals'
-        assert np.array_equal(np.array(var1.keys()), np.array(var2.keys())), 'Channels are not equals'
+        assert all([np.array_equal(m1['point_names'], m2['point_names']) for m1,m2 in itertools.combinations(meta_in,2)]), 'LANDVAL sites are not equals'
+        assert all([np.array_equal(v1.keys(), v2.keys()) for v1,v2 in itertools.combinations(var_in,2)]), 'LANDVAL sites are not equals'
+        #assert np.array_equal(meta1['point_names'], meta2['point_names']), 'LANDVAL sites are not equals'
+        #assert np.array_equal(np.array(var1.keys()), np.array(var2.keys())), 'Channels are not equals'
 
         ## Compute new dimension
-        g1 = meta1['global_id']
-        g2 = meta2['global_id']
+        gid = [m['global_id'] for m in meta_in]
         
-        print("g1.shape,g2.shape=", g1.shape,g2.shape)
-        print("g1[0],g1[-1]=", g1[0],g1[-1])
-        print("g2[0],g2[-1]=", g2[0],g2[-1])
+        for g in gid:
+            print("gid shape, first, last=", g.shape, g[0],g[-1])
 
-        if g1[0]<g2[0]:
-            dmin = g1[0]
-        else:
-            dmin = g2[0]
-        if g1[-1]>g2[-1]:
-            dmax = g1[-1]
-        else:
-            dmax = g2[-1]
+        dmin = min([min(g) for g in gid])
+        dmax = max([max(g) for g in gid])
 
         len_new = dmax-dmin+1
         print("dmin,dmax=", dmin,dmax)
         print("new_len=", len_new)
 
-        s1 = slice(g1[0]-dmin, g1[-1]-dmin+1)
-        s2 = slice(g2[0]-dmin, g2[-1]-dmin+1)
-        
+        loc = [slice(g[0]-dmin, g[-1]-dmin+1) for g in gid]
 
         ## Merge meta data
         var_new = {}
         meta_new = {}
-        meta_new['point_names'] = meta1['point_names']
+        meta_new['point_names'] = meta_in[0]['point_names']
         for vm in ['global_id', 'ts_dates']:
-            meta_new[vm] = np.zeros((len_new,), dtype=meta1[vm].dtype)
-            meta_new[vm][s1] = meta1[vm]
-            meta_new[vm][s2] = meta2[vm]
+            meta_new[vm] = np.zeros((len_new,), dtype=meta_in[0][vm].dtype)
+            for l,meta in zip(loc,meta_in):
+                meta_new[vm][l] = meta[vm]
     
         ## Merge data
-        for v in var1.keys():
-            var_new[v] = np.zeros((len_new, 1, len(meta1['point_names'])), dtype=var1[v].dtype)
-            var_new[v][s1] = var1[v]
-            var_new[v][s2] = var2[v]
+        for v in var_in[0].keys():
+            var_new[v] = np.zeros((len_new, 1, len(meta_in[0]['point_names'])), dtype=var_in[0][v].dtype)
+            for l,var in zip(loc,var_in):
+                var_new[v][l] = var[v]
     
 
         ## Save file
-        fname = 'merged_timeseries_{}_{}{:02d}_{}{:02d}.h5'.format(self.product.replace('_',''), 1970+dmin//36, dmin%36, 1970+dmax//36, dmax%36)
-        outpath = str(self.output_path / fname)
+        fname = 'timeseries_{}{:02d}_{}{:02d}.h5'.format(1970+dmin//36, dmin%36, 1970+dmax//36, dmax%36)
+        outpath = self.output_path / fname
         with h5py.File(outpath, mode='w') as h:
             for k,v in meta_new.items():
                 h[k] = v
@@ -155,14 +157,19 @@ class TimeSeriesMerger():
             h.attrs['product'] = self.product
         print('Merged file saved to:', outpath)
 
+        return self.product+'_MERGED'
+
 
 if __name__=='__main__':
     
-    kwargs = tools.parse_args()
+    #kwargs = tools.parse_args()
 
-    tsm = TimeSeriesMerger(**kwargs)
+    args = sys.argv[1:]
+
+    #tsm = TimeSeriesMerger(**kwargs)
+    tsm = TimeSeriesMerger(args)
     
-    tsm.merge()
+    tsm.run()
 
 
     
