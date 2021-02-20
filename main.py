@@ -119,21 +119,24 @@ class Main():
                 slist = ['FRENCHMAN_FLAT', 'BELMANIP_00332', 'Egypt#1', 'EL_FARAFRA', 'BELMANIP_00416', 'DOM1']
                 self.chunks = generic.CoordinatesConverter(self.args.input.param, sensor=self.args.product_tag[0].split('_')[-1], sub=slist)
        
-       
+
+        ## Create product objects
+        self.products = []
+        for p in self.args.product_tag:
+            prod = generic.Product(p, self.args.start_date, self.args.end_date, self.chunks)
+            if prod.start_date is not None:
+                self.products.append(prod)
+                self.products[-1].infos()
+            else:
+                self.args.product_tag.remove(p)
+
+
         ## print info
         print("Run {4} of {0} in {1} from {2} to {3}".format(green(','.join(self.args.product_tag)),
                                                              green(','.join(self.chunks.get_limits('global', 'str'))),
                                                              green(self.args.start_date.isoformat()),
                                                              green(self.args.end_date.isoformat()), 
                                                              green(','.join(self.args.action))) )
-        ## Compute hash
-        self.dic_hash = {}
-        for p in self.args.product_tag:
-            ### Trim dates for each product
-            #start = max(self.args.start_date, self.sensor_dates[p])
-            #self.dic_hash[p] = generic.get_case_hash(p, start, end, self.chunks)
-            self.dic_hash[p] = generic.get_case_hash(p, self.args.start_date, self.args.end_date, self.chunks)
-            print(p, self.dic_hash[p] )
     
         ## Read config yaml file
         with open("config.yml", 'r') as stream:
@@ -158,14 +161,17 @@ class Main():
             import time_series_reader
             
             cache_files = []
-            for prod in self.args.product_tag:
-                print('  Process {0}'.format(prod))
+            #for prod in self.args.product_tag:
+            for prod in self.products:
+                print('  Process {0}'.format(prod.name))
                 
-                list_args = [prod, self.args.start_date, self.args.end_date, self.chunks, self.yfile, self.dic_hash[prod], self.args.delete_cache]
+                list_args = [prod, self.chunks, self.yfile, self.args.delete_cache]
                 extractor = time_series_reader.TimeSeriesExtractor(*list_args)
                 cache = extractor.run()
                 cache_files += cache
-                print("cache_files=", cache_files)
+                print("cache files:")
+                for c in cache_files:
+                    print(c.as_posix())
     
         #------------------------------------------------#
         # MERGE
@@ -175,14 +181,13 @@ class Main():
     
             import time_series_merger
     
-            for prod in self.args.product_tag:
-                print('  Process {0}'.format(prod))
+            for prod in self.products:
+                print('  Process {0}'.format(prod.name))
                 
                 merger = time_series_merger.TimeSeriesMerger(cache_files)
                 merged_prod = merger.run()
             
-            self.args.product_tag = [merged_prod]
-            self.dic_hash[merged_prod] = 'merged'
+            self.products = [merged_prod]
 
         #------------------------------------------------#
         # TREND
@@ -192,10 +197,10 @@ class Main():
     
             import estimate_trends_from_time_series
     
-            for prod in self.args.product_tag:
-                print('  Process {0}'.format(prod))
+            for prod in self.products:
+                print('  Process {0}'.format(prod.name))
                 
-                list_args = [prod, self.chunks, self.args.nproc, self.args.delete_cache, self.yfile, self.dic_hash[prod]]
+                list_args = [prod, self.chunks, self.args.nproc, self.args.delete_cache, self.yfile]
                 estimate_trends_from_time_series.compute_trends(*list_args)
     
         #------------------------------------------------#
@@ -220,14 +225,13 @@ class Main():
     
             import trend_file_merger
     
-            for prod in self.args.product_tag:
-                print('  Process {0}'.format(prod))
+            for prod in self.products:
+                print('  Process {0}'.format(prod.name))
                 
-                phash = self.dic_hash[prod]
-                title = '{}:{} to {}'.format(phash, self.args.start_date.isoformat(), self.args.end_date.isoformat())
+                title = '{}:{} to {}'.format(prod.hash, self.args.start_date.isoformat(), self.args.end_date.isoformat())
     
                 for var in ['sn','zval','pval','len']:
-                    list_arg = [prod, self.chunks, title, var, 365, self.yfile, phash]
+                    list_arg = [prod, self.chunks, title, var, 365, self.yfile]
                     trend_file_merger.plot_trends(*list_arg)
     
 

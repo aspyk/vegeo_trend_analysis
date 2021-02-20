@@ -143,7 +143,7 @@ def merge_trends(product, chunks, config, phash):
     
 
 
-def plot_trends(product, chunks, plot_name, plot_choice, scale_tendency, config, phash):
+def plot_trends(product, chunks, plot_name, plot_choice, scale_tendency, config):
     """
     Faster version: load only required data, not the full disk each time.
     import xarray is still long (several second) but only at the first call
@@ -153,10 +153,13 @@ def plot_trends(product, chunks, plot_name, plot_choice, scale_tendency, config,
     # import cartopy.crs as ccrs # not find on VITO ?
     from mpl_toolkits.axes_grid1 import make_axes_locatable
     
-    ## TMP: harcoded file name
-    input_trend_file = pathlib.Path(config['output_path']['trend']) / product / (phash+'_'+config['output_path']['merged_filename'])
-    input_trend_file = 'output_trend/c3s_al_bbdh_AVHRR/2bfc9d_CHUNK0_SUBCHUNK0_0_726_0_1.nc'
-    output_path = pathlib.Path(config['output_path']['plot']) / product
+    
+    if chunks.input=='box':
+        input_trend_file = pathlib.Path(config['output_path']['trend']) / product.name / (product.hash+'_'+config['output_path']['merged_filename'])
+    elif chunks.input=='points':
+        input_trend_file = pathlib.Path(config['output_path']['trend']) / product.name / config['output_path']['merged_filename']
+    #input_trend_file = 'output_trend/c3s_al_bbdh_AVHRR/2bfc9d_CHUNK0_SUBCHUNK0_0_726_0_1.nc' # DEBUG: harcoded file name
+    output_path = pathlib.Path(config['output_path']['plot']) / product.name
 
     ## If input are points, show a world map with scatter plot
     if chunks.input=='points':
@@ -170,17 +173,20 @@ def plot_trends(product, chunks, plot_name, plot_choice, scale_tendency, config,
         trends['sn']  = nc_output.variables['chunk_scores_Sn_val'][:].ravel()
         nc_output.close()
 
-        #print(trends['sn'].shape)
-        #print(trends['sn'].min(), trends['sn'].max())
 
-        ## Set symmetrical color scale
-        if np.abs(trends['sn'].min()) > np.abs(trends['sn'].max()):
-            vn = -np.abs(trends['sn'].min())
-            vx = np.abs(trends['sn'].min())
-        else:
-            vn = -np.abs(trends['sn'].max())
-            vx = np.abs(trends['sn'].max())
-    
+        sn_max = np.abs(trends['sn']).max()
+        zval_max = np.abs(trends['zval']).max()
+        pval_max = np.abs(trends['pval']).max()
+
+        plot_param = {}
+        plot_param['len'] = {'vmin':0, 'vmax':trends['len'].max(), 'cmap':'jet'}
+        plot_param['sn'] = {'vmin':-sn_max, 'vmax':sn_max, 'cmap':'seismic'}
+        plot_param['zval'] = {'vmin':-zval_max, 'vmax':zval_max, 'cmap':'seismic'}
+        #plot_param['pval'] = {'vmin':-pval_max, 'vmax':pval_max, 'cmap':'seismic'}
+        plot_param['pval'] = {'cmap':'jet'}
+
+        ## Choose variable to plot
+        pvar = 'pval' 
         
         fig, ax = plt.subplots()
         
@@ -211,7 +217,8 @@ def plot_trends(product, chunks, plot_name, plot_choice, scale_tendency, config,
             #pts = (0.5*chunks.site_coor[['ilat', 'ilon']].values.T).astype(np.int32)
             #print(pts.shape)
             #scat = ax.scatter(pts[1], pts[0], c=trends['sn'], vmin=vn, vmax=vx, cmap=cm)
-            sc = ax.scatter(chunks.site_coor.LONGITUDE, chunks.site_coor.LATITUDE, c=trends['sn'], vmin=vn, vmax=vx, cmap=cm)
+            #sc = ax.scatter(chunks.site_coor.LONGITUDE, chunks.site_coor.LATITUDE, c=trends[pvar], vmin=vn, vmax=vx, cmap=cm)
+            sc = ax.scatter(chunks.site_coor.LONGITUDE, chunks.site_coor.LATITUDE, c=trends[pvar], **plot_param[pvar])
             
             # create an axes on the right side of ax. The width of cax will be 5%
             # of ax and the padding between cax and ax will be fixed at 0.05 inch.
@@ -220,7 +227,8 @@ def plot_trends(product, chunks, plot_name, plot_choice, scale_tendency, config,
             plt.colorbar(sc, cax=cax) 
         
         ax.set_aspect('equal')
-
+        
+        ## Enable dynamic annotation on point hovering
         if 1:
             annot = ax.annotate("", xy=(0,0), xytext=(20,20),textcoords="offset points",
                                 bbox=dict(boxstyle="round", fc="w"),
@@ -253,6 +261,10 @@ def plot_trends(product, chunks, plot_name, plot_choice, scale_tendency, config,
            
             fig.canvas.mpl_connect("motion_notify_event", hover)
 
+        ax.set_title("{} | {} to {} | {}".format(product.shorten.replace('_','-').upper(),
+                                             product.start_date.strftime('%Y-%m-%d'),
+                                             product.end_date.strftime('%Y-%m-%d'),
+                                             pvar) )
         #plt.savefig('res_c3s.png')
         plt.show()
 
@@ -353,7 +365,7 @@ def plot_trends(product, chunks, plot_name, plot_choice, scale_tendency, config,
     ax.set_title('{} for {}'.format(plot_choice, plot_name.split(':')[1]), fontsize=20)
     
     zone_str = '_'.join(chunks.get_limits('global','str'))
-    plot_fname = phash+'_'+plot_choice+'_'+zone_str+'.png'
+    plot_fname = product.name+'_'+plot_choice+'_'+zone_str+'.png'
     plot_path = output_path / plot_fname
     
     #fig.savefig(plot_string_save, dpi=300)

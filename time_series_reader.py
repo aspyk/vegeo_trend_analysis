@@ -33,12 +33,12 @@ from tools import SimpleTimer
 
 
 class TimeSeriesExtractor():
-    def __init__(self, product, start, end, chunks, config, phash, b_delete):
-        self.start = start
-        self.end = end
-        self.product = product
+    def __init__(self, product, chunks, config, b_delete):
+        self.start = product.start_date
+        self.end = product.end_date
+        self.product = product.name
         self.chunks = chunks
-        self.hash = phash
+        self.hash = product.hash
         self.b_delete = b_delete
         
         self.config = config[self.product]
@@ -51,9 +51,9 @@ class TimeSeriesExtractor():
         if self.config['freq']=='10D':
             # Every 10D means 3 snapshots a month and 36 snapshots a year
             print('INFO: frequency = 10D so start and end dates are trimmed to start and end of month respectively') 
-            self.start = self.start.replace(day=1)
-            self.end = self.end.replace(day=pd.Period(self.end, freq='D').days_in_month) # freq='xxx' is here just to avoid a bug
-            self.dseries = pd.date_range(self.start, self.end, freq='D')
+            self.start_01 = self.start.replace(day=1)
+            self.end_31 = self.end.replace(day=pd.Period(self.end, freq='D').days_in_month) # freq='xxx' is here just to avoid a bug
+            self.dseries = pd.date_range(self.start_01, self.end_31, freq='D')
             self.dseries = self.dseries[[d in [1,2,3] for d in self.dseries.day]] # select only days 3, 13 and 23 by month
         else:
             self.dseries = pd.date_range(self.start, self.end, freq=self.config['freq'])
@@ -269,9 +269,6 @@ class TimeSeriesExtractor():
             # Trim the dates using start and end in a DataFrame
             df = df.set_index('datetime') 
             df = df.sort_index().loc[self.start:self.end]
-            # DEPRECATED: to be done in merge module: Remove duplicated date with VGT sensor
-            #df = df[~((df.index.duplicated(keep=False)) & (df['sensor']=='VGT'))]
-            #df = df.drop(columns=['sensor'])
 
             ## The time series may have missing data and we have to take them into account.
             ## self.dfseries is the list of all theoretical dates (ex d1 to d4) so we are going
@@ -315,7 +312,6 @@ class TimeSeriesExtractor():
             # Join with valid data, empty date will automatically be filled with NaN or NaT
             self.df_full = self.df_full.join(df)
 
-
             # Show summary of valid data by year (or month)
             #df = df.groupby([df.index.year, df.index.month]).count()
             sum = self.df_full.groupby([self.df_full.index.year]).count()
@@ -333,7 +329,7 @@ class TimeSeriesExtractor():
             self.df_full['global_id'] = fd 
             #self.df_full = self.df_full.set_index('global_id')
 
-
+        
             ## Loop on these files and yield
             
             #for row in df.to_dict(orient="records"):
@@ -576,8 +572,8 @@ class TimeSeriesExtractor():
                 var[:] = var_data
         
         ds.close()
-        print(">>> Data chunk written to:", write_file)
-        return write_file
+        print(">>> Data chunk written to:", self.write_file)
+        return self.write_file
         
     def _check_previous_cache(self):
         """

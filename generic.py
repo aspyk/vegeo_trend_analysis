@@ -1,7 +1,8 @@
 import pandas as pd
 import numpy as np
 import hashlib
-from collections import namedtuple
+from datetime import *
+from pprint import pprint
 
 
 class Splitter():
@@ -212,6 +213,44 @@ class CoordinatesConverter():
         site_data = self.get_row_by_name(site_name)
         ilat,ilon = site_data[['ilat', 'ilon']].values[0] # here values return [[xx,yy]]
         return (slice(ilat, ilat+size), slice(ilon, ilon+size))
+
+
+class Product():
+    ## Sensor dates
+    #NOAA_satellite Start_date End_date
+    sensor_dates = {}
+    sensor_dates['AVHRR']  = ('20-09-1981', '31-12-2005')
+    sensor_dates['VGT']    = ('10-04-1998', '31-05-2014')
+    sensor_dates['PROBAV'] = ('31-10-2013', '30-06-2020')
+    sensor_dates['MERGED'] = ('20-09-1981', '30-06-2020')
+
+    sensor_dates = {k: [datetime.strptime(i, "%d-%m-%Y") for i in v] for k,v in sensor_dates.items()}
+
+    def __init__(self, product_name, start_date, end_date, chunks):
+        assert isinstance(product_name, str)
+        assert isinstance(start_date, datetime)
+        assert isinstance(end_date, datetime)
+        self.name = product_name
+        self.sensor = product_name.split('_')[-1]
+        self.shorten = '_'.join(product_name.split('_')[:-1])
+        ## Check if date range overlaps
+        if (start_date > self.sensor_dates[self.sensor][1]) or (end_date < self.sensor_dates[self.sensor][0]):
+            self.start_date = None
+            self.end_date = None
+            self.hash = '000000'
+            print("WARNING: Sensor {} is not available in this time range".format(self.sensor))
+        ## if ok trim dates for each product
+        else:
+            self.start_date = max(start_date, self.sensor_dates[self.sensor][0])
+            self.end_date = min(end_date, self.sensor_dates[self.sensor][1])
+            if isinstance(chunks, str):
+                self.hash = chunks
+            else:
+                self.hash = get_case_hash(self.name, self.start_date, self.end_date, chunks)
+
+    def infos(self):
+        pprint(vars(self))
+        
 
 
 def plot2Darray(v, var='var'):

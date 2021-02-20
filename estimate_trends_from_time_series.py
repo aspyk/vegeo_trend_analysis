@@ -64,21 +64,22 @@ def processInput_trends(subchunk, parent_iteration, child_iteration):
     #print('INFO: see trend.out to monitor trend computation progress')
     #sys.stdout = open('trend.out', 'a')
 
-    if subchunk.input=='box':
-        print('### Chunk {} > subchunk {} started: COL: [{}:{}] ROW: [{}:{}]'.format(parent_iteration, child_iteration, *subchunk.get_limits('local', 'str')))
-    elif subchunk.input=='points':
-        print('### Chunk {} > subchunk {} started.'.format(parent_iteration, child_iteration))
-
     ## Debug tool to print process Ids
     process = psutil.Process(os.getpid())
     current = current_process()
     print(process, current._identity, '{} Mo'.format(process.memory_info().rss/1024/1024))
 
+    if subchunk.input=='box':
+        print('### Chunk {} > subchunk {} started: COL: [{}:{}] ROW: [{}:{}]'.format(parent_iteration, child_iteration, *subchunk.get_limits('local', 'str')))
+        write_string0 = (param.hash+"_CHUNK" + np.str(parent_iteration)  
+                         + "_SUBCHUNK" + np.str(child_iteration)   
+                         + "_" + '_'.join(subchunk.get_limits('global', 'str'))
+                         + '.nc')
+    elif subchunk.input=='points':
+        print('### Chunk {} > subchunk {} started.'.format(parent_iteration, child_iteration))
+        write_string0 = 'merged_trends.nc'  
+
     ## Check if cache file already exists and must be overwritten
-    write_string0 = (param.hash+"_CHUNK" + np.str(parent_iteration)  
-                     + "_SUBCHUNK" + np.str(child_iteration)   
-                     + "_" + '_'.join(subchunk.get_limits('global', 'str'))
-                     + '.nc')
     subchunk_fname = param.output_path / write_string0
 
     if not param.b_delete:
@@ -357,19 +358,19 @@ def compute_trends(*args):
     lock = Lock()
 
     class ArgsTmp:
-        def __init__(self, prod, chunks, np, b_delete, config, h):
-            self.hash = h
+        def __init__(self, prod, chunks, np, b_delete, config):
+            self.hash = prod.hash
             self.input = pathlib.Path(config['output_path']['extract'])
             self.output = pathlib.Path(config['output_path']['trend'])
-            self.product = prod
+            self.product = prod.name
             self.nproc = np
             self.chunks = chunks
             self.b_delete = b_delete
         
-            self.input_path = self.input / prod 
+            self.input_path = self.input / prod.name 
             self.input_file = '' 
             
-            self.output_path = self.output / prod 
+            self.output_path = self.output / prod.name
             # Make dir if not exists
             self.output_path.mkdir(parents=True, exist_ok=True)
 

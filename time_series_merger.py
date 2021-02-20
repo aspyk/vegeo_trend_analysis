@@ -3,9 +3,9 @@ import h5py
 import numpy as np
 import pathlib
 import tools
-import pandas as pd
 import sys
 import itertools
+import generic
 
 
 class TimeSeriesMerger():
@@ -157,7 +157,11 @@ class TimeSeriesMerger():
             h.attrs['product'] = self.product
         print('Merged file saved to:', outpath)
 
-        return self.product+'_MERGED'
+        merged_prod = generic.Product(self.product+'_MERGED',
+                                      pd.to_datetime(meta_new['ts_dates'][0], unit='s'),
+                                      pd.to_datetime(meta_new['ts_dates'][-1], unit='s'),
+                                      'merged')
+        return merged_prod
 
 
 if __name__=='__main__':
