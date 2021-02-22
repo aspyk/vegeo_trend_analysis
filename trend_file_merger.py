@@ -157,14 +157,20 @@ def plot_trends(product, chunks, plot_name, plot_choice, scale_tendency, config)
     if chunks.input=='box':
         input_trend_file = pathlib.Path(config['output_path']['trend']) / product.name / (product.hash+'_'+config['output_path']['merged_filename'])
     elif chunks.input=='points':
-        input_trend_file = pathlib.Path(config['output_path']['trend']) / product.name / config['output_path']['merged_filename']
+        list_of_paths = (pathlib.Path(config['output_path']['trend']) / product.name).glob('*')
+        latest_path = max(list_of_paths, key=lambda p: p.stat().st_ctime)
+        input_trend_file = latest_path
     #input_trend_file = 'output_trend/c3s_al_bbdh_AVHRR/2bfc9d_CHUNK0_SUBCHUNK0_0_726_0_1.nc' # DEBUG: harcoded file name
     output_path = pathlib.Path(config['output_path']['plot']) / product.name
+
+    print('INFO: Read {}'.format(input_trend_file))
 
     ## If input are points, show a world map with scatter plot
     if chunks.input=='points':
         ## Read results stats
         nc_output = Dataset(input_trend_file, 'r')
+
+        res_vars = ['pval', 'zval', 'len', 'sn']
 
         trends = {}
         trends['pval'] = nc_output.variables['chunk_scores_p_val'][:].ravel()
@@ -188,10 +194,12 @@ def plot_trends(product, chunks, plot_name, plot_choice, scale_tendency, config)
         ## Choose variable to plot
         pvar = 'pval' 
         
-        fig, ax = plt.subplots()
+        fig, axs = plt.subplots(2,2)
+        axs = axs.ravel()
         
         ptype = 2
 
+        ## Add land mask
         if 1:
             with h5py.File('c3s_land_mask.h5', 'r') as h:
                 lon = h['lon'][:]
@@ -209,62 +217,66 @@ def plot_trends(product, chunks, plot_name, plot_choice, scale_tendency, config)
             cm = 'gist_ncar'
             #mat = ax.imshow(data[0,::2,::2], cmap=cm)
             print(mask.shape)
-            mat = ax.imshow(mask, extent=extent, cmap='terrain')
+            for ax in axs:
+                mat = ax.imshow(mask, extent=extent, cmap='terrain')
         
         # Add landval sites with scatter
-        if ptype==2:
-            cm = 'seismic'
-            #pts = (0.5*chunks.site_coor[['ilat', 'ilon']].values.T).astype(np.int32)
-            #print(pts.shape)
-            #scat = ax.scatter(pts[1], pts[0], c=trends['sn'], vmin=vn, vmax=vx, cmap=cm)
-            #sc = ax.scatter(chunks.site_coor.LONGITUDE, chunks.site_coor.LATITUDE, c=trends[pvar], vmin=vn, vmax=vx, cmap=cm)
-            sc = ax.scatter(chunks.site_coor.LONGITUDE, chunks.site_coor.LATITUDE, c=trends[pvar], **plot_param[pvar])
+        for ax,rvar in zip(axs,res_vars):
+            if ptype==2:
+                cm = 'seismic'
+                #pts = (0.5*chunks.site_coor[['ilat', 'ilon']].values.T).astype(np.int32)
+                #print(pts.shape)
+                #scat = ax.scatter(pts[1], pts[0], c=trends['sn'], vmin=vn, vmax=vx, cmap=cm)
+                #sc = ax.scatter(chunks.site_coor.LONGITUDE, chunks.site_coor.LATITUDE, c=trends[pvar], vmin=vn, vmax=vx, cmap=cm)
+                sc = ax.scatter(chunks.site_coor.LONGITUDE, chunks.site_coor.LATITUDE, c=trends[rvar], **plot_param[rvar])
+                
+                # create an axes on the right side of ax. The width of cax will be 5%
+                # of ax and the padding between cax and ax will be fixed at 0.05 inch.
+                divider = make_axes_locatable(ax)
+                cax = divider.append_axes("right", size="5%", pad=0.05)
+                plt.colorbar(sc, cax=cax) 
             
-            # create an axes on the right side of ax. The width of cax will be 5%
-            # of ax and the padding between cax and ax will be fixed at 0.05 inch.
-            divider = make_axes_locatable(ax)
-            cax = divider.append_axes("right", size="5%", pad=0.05)
-            plt.colorbar(sc, cax=cax) 
-        
-        ax.set_aspect('equal')
-        
-        ## Enable dynamic annotation on point hovering
-        if 1:
-            annot = ax.annotate("", xy=(0,0), xytext=(20,20),textcoords="offset points",
-                                bbox=dict(boxstyle="round", fc="w"),
-                                arrowprops=dict(arrowstyle="->"))
-            annot.set_visible(False)
+            ax.set_aspect('equal')
             
-            def update_annot(ind):
-            
-                pos = sc.get_offsets()[ind["ind"][0]]
-                annot.xy = pos
-                text = "{}, {}".format(" ".join(list(map(str,ind["ind"]))), 
-                                       " ".join([chunks.site_coor.NAME.values[n] for n in ind["ind"]]))
-                annot.set_text(text)
-                #annot.get_bbox_patch().set_facecolor(cmap(norm(c[ind["ind"][0]])))
-                annot.get_bbox_patch().set_alpha(0.4)
-            
-            
-            def hover(event):
-                vis = annot.get_visible()
-                if event.inaxes == ax:
-                    cont, ind = sc.contains(event)
-                    if cont:
-                        update_annot(ind)
-                        annot.set_visible(True)
-                        fig.canvas.draw_idle()
-                    else:
-                        if vis:
-                            annot.set_visible(False)
+            ## Enable dynamic annotation on point hovering
+            if 0:
+                annot = ax.annotate("", xy=(0,0), xytext=(20,20),textcoords="offset points",
+                                    bbox=dict(boxstyle="round", fc="w"),
+                                    arrowprops=dict(arrowstyle="->"))
+                annot.set_visible(False)
+                
+                def update_annot(ind):
+                
+                    pos = sc.get_offsets()[ind["ind"][0]]
+                    annot.xy = pos
+                    #text = "{}, {}".format(" ".join(list(map(str,ind["ind"]))), 
+                    #                       " ".join([chunks.site_coor.NAME.values[n] for n in ind["ind"]]))
+                    text = "{}, {}".format(" ".join([chunks.site_coor.NAME.values[n] for n in ind["ind"]]),
+                                           " ".join([str(trends[pvar][n]) for n in ind["ind"]]))
+                    annot.set_text(text)
+                    #annot.get_bbox_patch().set_facecolor(cmap(norm(c[ind["ind"][0]])))
+                    annot.get_bbox_patch().set_alpha(0.4)
+                
+                
+                def hover(event):
+                    vis = annot.get_visible()
+                    if event.inaxes == ax:
+                        cont, ind = sc.contains(event)
+                        if cont:
+                            update_annot(ind)
+                            annot.set_visible(True)
                             fig.canvas.draw_idle()
-           
-            fig.canvas.mpl_connect("motion_notify_event", hover)
+                        else:
+                            if vis:
+                                annot.set_visible(False)
+                                fig.canvas.draw_idle()
+               
+                fig.canvas.mpl_connect("motion_notify_event", hover)
 
-        ax.set_title("{} | {} to {} | {}".format(product.shorten.replace('_','-').upper(),
+            ax.set_title("{} | {} to {} | {}".format(product.shorten.replace('_','-').upper(),
                                              product.start_date.strftime('%Y-%m-%d'),
                                              product.end_date.strftime('%Y-%m-%d'),
-                                             pvar) )
+                                             rvar) )
         #plt.savefig('res_c3s.png')
         plt.show()
 
