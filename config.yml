@@ -161,3 +161,11 @@ output_path:
     trend: './output_trend'
     plot: './output_plot'
     merged_filename: 'merged_trends.nc'
+
+ # Input file with reference site coordinates
+ # (read only if input type = latloncsv)
+ref_site_coor:
+    AVHRR: './LANDVAL2.csv'
+    VGT: './LANDVAL2_avhrr_topleft.csv'
+    PROBAV: './LANDVAL2_avhrr_topleft.csv'
+

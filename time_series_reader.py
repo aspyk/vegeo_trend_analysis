@@ -241,7 +241,7 @@ class TimeSeriesExtractor():
                 for dp, dn, fn in os.walk((pathlib.Path(self.config['root'])/str(y)).as_posix()):
                     if len(fn)>0:
                         fl = fnmatch.filter(fn, '*.nc')
-                        if len(fl)==1:
+                        if len(fl)==1: # Normally there is is only one nc file in each folder
                             ncfile = fl[0]
                             # Check sensor type
                             if self.chunk.sensor not in ncfile:

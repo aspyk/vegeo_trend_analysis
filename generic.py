@@ -216,6 +216,10 @@ class CoordinatesConverter():
 
 
 class Product():
+    """
+    Adapt and store product parameter
+    Trim the dates given in input to fit the actual date range of the sensor
+    """
     ## Sensor dates
     #NOAA_satellite Start_date End_date
     sensor_dates = {}
@@ -233,6 +237,7 @@ class Product():
         self.name = product_name
         self.sensor = product_name.split('_')[-1]
         self.shorten = '_'.join(product_name.split('_')[:-1])
+        self.chunks = chunks
         ## Check if date range overlaps
         if (start_date > self.sensor_dates[self.sensor][1]) or (end_date < self.sensor_dates[self.sensor][0]):
             self.start_date = None
@@ -243,10 +248,10 @@ class Product():
         else:
             self.start_date = max(start_date, self.sensor_dates[self.sensor][0])
             self.end_date = min(end_date, self.sensor_dates[self.sensor][1])
-            if isinstance(chunks, str):
-                self.hash = chunks
+            if isinstance(self.chunks, str):
+                self.hash = self.chunks
             else:
-                self.hash = get_case_hash(self.name, self.start_date, self.end_date, chunks)
+                self.hash = get_case_hash(self.name, self.start_date, self.end_date, self.chunks)
 
     def infos(self):
         pprint(vars(self))

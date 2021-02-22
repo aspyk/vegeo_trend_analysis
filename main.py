@@ -103,6 +103,15 @@ class Main():
         dic_zone['SAme'] = [  40,  740, 1460, 2970]
         dic_zone['Fra']  = [1740, 2060,  310,  510]
         
+        ## Read config yaml file
+        with open("config.yml", 'r') as stream:
+            try:
+                self.yfile = yaml.safe_load(stream)
+            except yaml.YAMLError as exc:
+                print(exc)
+                sys.exit()
+        print('*** Config file read OK.')
+    
         ## Parse input format
         if self.args.input.type in ['box','alias']:
             ## Generate chunks with splitter object
@@ -113,23 +122,33 @@ class Main():
             self.chunks = generic.Splitter(*zone_idx)
             self.chunks.subdivide(self.args.master_chunk)
         elif self.args.input.type=='latloncsv':
-            self.chunks = generic.CoordinatesConverter(self.args.input.param, sensor=self.args.product_tag[0].split('_')[-1])
-            ## DEBUG: load only few points
-            if 0:
-                slist = ['FRENCHMAN_FLAT', 'BELMANIP_00332', 'Egypt#1', 'EL_FARAFRA', 'BELMANIP_00416', 'DOM1']
-                self.chunks = generic.CoordinatesConverter(self.args.input.param, sensor=self.args.product_tag[0].split('_')[-1], sub=slist)
-       
+            ## Loop on product
+            self.products = []
+            for p in self.args.product_tag:
+                ## Get sensor type
+                sensor = p.split('_')[-1]
+                
+                ## Set origin of the coordinate file
+                if self.args.input.param=='config':
+                    input_coor = self.yfile['ref_site_coor'][sensor]
+                else:
+                    input_coor = self.args.input.param=='config'
+                
+                ## Can use a subset of points for debugging if 0
+                if 0:
+                    self.chunks = generic.CoordinatesConverter(input_coor, sensor=sensor)
+                else: # DEBUG
+                    slist = ['FRENCHMAN_FLAT', 'BELMANIP_00332', 'Egypt#1', 'EL_FARAFRA', 'BELMANIP_00416', 'DOM1']
+                    self.chunks = generic.CoordinatesConverter(input_coor, sensor=sensor, sub=slist)
+                
+                ## Finally Product objects
+                prod = generic.Product(p, self.args.start_date, self.args.end_date, self.chunks)
+                if prod.start_date is not None:
+                    self.products.append(prod)
+                    self.products[-1].infos()
 
-        ## Create product objects
-        self.products = []
-        for p in self.args.product_tag:
-            prod = generic.Product(p, self.args.start_date, self.args.end_date, self.chunks)
-            if prod.start_date is not None:
-                self.products.append(prod)
-                self.products[-1].infos()
-            else:
-                self.args.product_tag.remove(p)
-
+        ## Update list of product name with only available one
+        self.args.product_tag = [p.name for p in self.products]
 
         ## print info
         print("Run {4} of {0} in {1} from {2} to {3}".format(green(','.join(self.args.product_tag)),
@@ -138,34 +157,31 @@ class Main():
                                                              green(self.args.end_date.isoformat()), 
                                                              green(','.join(self.args.action))) )
     
-        ## Read config yaml file
-        with open("config.yml", 'r') as stream:
-            try:
-                self.yfile = yaml.safe_load(stream)
-            except yaml.YAMLError as exc:
-                print(exc)
-                sys.exit()
-        print('*** Config file read OK.')
-    
     def process(self):
         """
         Run the selected pipeline actions
         """
 
+        def print_section(title):
+            hline = '#----------------------------------#'
+            print(hline)
+            print('# '+title)
+            print(hline)
+
         #------------------------------------------------#
         # EXTRACT
         #------------------------------------------------#
         if 'extract' in self.args.action:
-            print('>>> Extract time series...')
+            print_section('Extract time series')
     
             import time_series_reader
             
             cache_files = []
-            #for prod in self.args.product_tag:
+            print(self.products)
             for prod in self.products:
                 print('  Process {0}'.format(prod.name))
                 
-                list_args = [prod, self.chunks, self.yfile, self.args.delete_cache]
+                list_args = [prod, prod.chunks, self.yfile, self.args.delete_cache]
                 extractor = time_series_reader.TimeSeriesExtractor(*list_args)
                 cache = extractor.run()
                 cache_files += cache
@@ -177,15 +193,12 @@ class Main():
         # MERGE
         #------------------------------------------------#
         if 'merge' in self.args.action:
-            print('>>> Merge time series...')
+            print_section('Merge time series')
     
             import time_series_merger
     
-            for prod in self.products:
-                print('  Process {0}'.format(prod.name))
-                
-                merger = time_series_merger.TimeSeriesMerger(cache_files)
-                merged_prod = merger.run()
+            merger = time_series_merger.TimeSeriesMerger(cache_files)
+            merged_prod = merger.run()
             
             self.products = [merged_prod]
 
@@ -193,7 +206,7 @@ class Main():
         # TREND
         #------------------------------------------------#
         if 'trend' in self.args.action:
-            print('>>> Compute trends...')
+            print_section('Compute trends')
     
             import estimate_trends_from_time_series
     
@@ -207,7 +220,7 @@ class Main():
         # JOIN
         #------------------------------------------------#
         if 'join' in self.args.action:
-            print('>>> Join trends...')
+            print_section('Join trends')
     
             import trend_file_merger
     
@@ -221,7 +234,7 @@ class Main():
         # PLOT
         #------------------------------------------------#
         if 'plot' in self.args.action:
-            print('>>> Generate plot...')
+            print_section('Generate plot')
     
             import trend_file_merger
     
