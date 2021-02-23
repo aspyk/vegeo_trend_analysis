@@ -135,7 +135,7 @@ class Main():
                     input_coor = self.args.input.param=='config'
                 
                 ## Can use a subset of points for debugging if 0
-                if 0:
+                if 1:
                     self.chunks = generic.CoordinatesConverter(input_coor, sensor=sensor)
                 else: # DEBUG
                     slist = ['FRENCHMAN_FLAT', 'BELMANIP_00332', 'Egypt#1', 'EL_FARAFRA', 'BELMANIP_00416', 'DOM1']
