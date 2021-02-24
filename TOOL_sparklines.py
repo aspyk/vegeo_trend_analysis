@@ -47,11 +47,12 @@ class Sparkline():
     sensor_dates = [[v[0], [datetime.strptime(i, "%d-%m-%Y").timestamp() for i in v[1]]] for v in sensor_dates]
 
 
-    def __init__(self, data):
+    def __init__(self, data, **kwargs):
         self.data_group = data
         self.fname_param = []
-        pass
 
+        for key in kwargs:
+            setattr(self, key, kwargs[key])
 
     def _add_data_graph(self):
         if mode=='oneline':
@@ -177,7 +178,11 @@ class Sparkline():
                 dmax = self.data_group.gdmax
                 yrange = (dmin, dmax)
             else:
-                yrange = (0.0, 0.25)
+                if self.b_zscore:
+                    yrange = (-3, 3) # for Z-score
+                else:
+                    yrange = (0.0, 0.6)
+
 
             ## Add sensor time range
             d = yrange[1]-yrange[0]
@@ -225,9 +230,55 @@ class Sparkline():
             #self.ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
             self.ax.set_xticklabels(xlabs)
             self.ax.set_xticks(xlocs)
+            plt.xticks(rotation=30)
         
             plt.title(text, fontsize=8)
         
+        if mode=='timeline_only':
+
+            if self.figsize is None:
+                self.figsize = (16, 2)
+            self.fig, self.ax = plt.subplots(1, 1, figsize=self.figsize, **kwags)
+
+            yrange = (0.0, 1.0)
+
+            ## Add sensor time range
+            d = yrange[1]-yrange[0]
+            s = yrange[1]+yrange[0]
+            for v in self.sensor_dates:
+                if 'VGT' in v[0]:
+                    self.ax.fill_between(v[1], 2*[yrange[0]], 2*[0.5*s-0.02*d], alpha=0.2)
+                    htxt = 0.25*yrange[1]
+                else:
+                    self.ax.fill_between(v[1], 2*[yrange[1]], 2*[0.5*s+0.02*d], alpha=0.2)
+                    htxt = 0.75*yrange[1]
+                # Plot name
+                if tmin < 0.5*(v[1][1]+v[1][0]) < tmax:
+                    t = plt.text(0.5*(v[1][1]+v[1][0]), htxt, v[0], horizontalalignment='center', fontsize=8)
+           
+            ## Add vertical lines for years at yyyy-01-01 00:00:00
+            ymin = pd.to_datetime(tmin, unit='s').year
+            ymax = pd.to_datetime(tmax, unit='s').year
+            xlabs = []
+            xlocs = []
+            for y in pd.date_range(str(ymin), str(ymax), freq='AS'):
+                self.ax.axvline(y.timestamp(), c='k', alpha=0.1)
+                xlabs.append(str(y.year))
+                xlocs.append(y.timestamp())
+
+            self.ax.set_ylim(*yrange)
+            
+            self.ax.set_xlim(tmin, tmax)
+            #self.fig.autofmt_xdate()
+            #self.ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
+            self.ax.set_xticklabels(xlabs)
+            self.ax.set_xticks(xlocs)
+            plt.xticks(rotation=30)
+            self.ax.set_yticks([])
+        
+            #plt.title(text, fontsize=8)
+        
+    
     
         img = BytesIO()
         plt.savefig(img, transparent=True, bbox_inches='tight')
@@ -275,10 +326,13 @@ class TimeSeriesGroup():
     - point sources could be independant between input files
     """
 
-    def __init__(self, flist):
+    def __init__(self, flist, **kwargs):
         self.tslist = []
         for f in flist:
-            self.tslist.append(TimeSeries(f))
+            self.tslist.append(TimeSeries(f, **kwargs))
+
+        for key in kwargs:
+            setattr(self, key, kwargs[key])
 
         self._check()
 
@@ -334,11 +388,14 @@ class TimeSeriesGroup():
 
 class TimeSeries():
 
-    def __init__(self, fname):
+    def __init__(self, fname, **kwargs):
         self.fname = fname
         
         self.hdf = Dataset(fname, 'r', format='NETCDF4')
         
+        for key in kwargs:
+            setattr(self, key, kwargs[key])
+
         ## Get dates
         self.dates = self.hdf.variables['ts_dates'][:].astype(np.float)
         self.dates[self.dates==0.] = np.nan
@@ -365,14 +422,26 @@ class TimeSeries():
             #data = data[:,:10]
             #self.point_names = self.point_names[:10]
             
-            #sites = ['FRENCHMAN_FLAT', 'BELMANIP_00332', 'Egypt#1', 'EL_FARAFRA', 'BELMANIP_00416', 'DOM1']
-            sites = ['DOM1']
+            sites = ['FRENCHMAN_FLAT', 'BELMANIP_00332', 'Egypt#1', 'EL_FARAFRA', 'BELMANIP_00416', 'DOM1']
+            #sites = ['FRENCHMAN_FLAT']
+            #sites = ['DOM1']
             id_sites = [i for i, j in enumerate(self.point_names) if j in sites]
             data = data[:,id_sites]
             self.point_names = [self.point_names[i] for i in id_sites]
 
-        
-        self.df = pd.DataFrame(data, columns=self.point_names)
+        ## Use physical data or scale it using Z score
+        if not self.b_zscore:
+            self.df = pd.DataFrame(data, columns=self.point_names)
+        else: # Z score
+            globid = self.hdf.variables['global_id'][:]
+            self.df = pd.DataFrame(data, columns=self.point_names, index=[globid//36, globid%36])
+            self.df = self.df.unstack()
+            df_zman = (self.df-self.df.mean())/self.df.std() # Compute z-score
+            df_res = df_zman.stack(dropna=False)
+            df_res = df_res.loc[df_res.first_valid_index():df_res.last_valid_index()] # trim leading and trailing nan rows
+            self.df = df_res
+
+
         self.df.insert(0, 'timestamp', self.dates)
         
 
@@ -387,17 +456,20 @@ class TimeSeries():
 
 if __name__ == "__main__":
 
+    kwargs = {'b_zscore':True}
+
     filelist = [i for i in sys.argv if i[-3:] in ['.nc', '.h5']] 
 
-    tsg = TimeSeriesGroup(filelist)
+    tsg = TimeSeriesGroup(filelist, **kwargs)
 
     vname = sys.argv[-1]
     
-    s = Sparkline(tsg)
+    s = Sparkline(tsg, **kwargs)
     #s.run('wrap')
     #s.run(vname, 'oneline')
     #s.run(vname, 'oneline', time_range=('1998-01-01', '2014-12-31'))
     #s.run(vname, 'classical', time_range=('2000-01-01', '2000-12-31'))
     s.run(vname, 'classical', time_range=('1981-01-01', '2020-12-31'))
     #s.run(vname, 'classical')
+    #s.run(vname, 'timeline_only', time_range=('1981-01-01', '2020-12-31'))
     
