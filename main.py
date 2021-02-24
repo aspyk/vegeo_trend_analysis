@@ -8,16 +8,24 @@ import generic
 import yaml
 
 def print_versions():
-    print(sys.version)
+    print('Python '+sys.version)
     import numpy as np
     print("numpy =", np.__version__)
     import pandas as pd
     print("pandas =", pd.__version__)
     import matplotlib as mpl
     print("matplotlib =", mpl.__version__)
+    import netCDF4 
+    print("netCDF4 =", netCDF4.__version__)
     import h5py.version
     print("h5py = ", h5py.version.version)
     print("hdf5 = ", h5py.version.hdf5_version)
+
+def print_section(title):
+    hline = '#----------------------------------#'
+    print(hline)
+    print('# '+title)
+    print(hline)
 
 class ParseInput():
     def __init__(self, input_string):
@@ -174,12 +182,6 @@ class Main():
         Run the selected pipeline actions
         """
 
-        def print_section(title):
-            hline = '#----------------------------------#'
-            print(hline)
-            print('# '+title)
-            print(hline)
-
         #------------------------------------------------#
         # EXTRACT
         #------------------------------------------------#
@@ -261,8 +263,13 @@ class Main():
     
 
 if __name__ == "__main__":
-    print_versions()
+    
+    if 1:
+        print_section('Print versions')
+        print_versions()
+    
     main = Main()
+    print_section('Pre-processing')
     main.preprocess()
     main.process()
 
