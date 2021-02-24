@@ -419,8 +419,8 @@ class TimeSeriesExtractor():
             # Discard pixels in the analysis when:
             # - Fill value in AL_* (-32767)
             # - Outside valid range in AL_* ([0, 10000])
-            # - QFLAG indicates ‘sea’ or ‘continental water’ (QFLAG bits 0-1) → Fill value in product
-            # - QFLAG indicates the algorithm failed (QFLAG bit 7) → Fill value in product
+            # - QFLAG indicates ‘sea’ or ‘continental water’ (QFLAG bits 0-1) -> Fill value in product
+            # - QFLAG indicates the algorithm failed (QFLAG bit 7) -> Fill value in product
             # Optionally, also the following thresholds can be considered:
             # - *_ERR > 0.2
             # - AGE > 30
@@ -582,6 +582,8 @@ class TimeSeriesExtractor():
         write_file = self.output_path / self.product / (self.hash+'_timeseries_'+'_'.join(self.chunk.get_limits('global', 'str'))+'.nc')
 
         self.write_file = write_file
+        
+        print ('INFO: Check for previous Cache file {} '.format(write_file))
 
         if not self.b_delete:
             if write_file.is_file():
