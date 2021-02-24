@@ -7,6 +7,18 @@ import os,sys
 import generic
 import yaml
 
+def print_versions():
+    print(sys.version)
+    import numpy as np
+    print("numpy =", np.__version__)
+    import pandas as pd
+    print("pandas =", pd.__version__)
+    import matplotlib as mpl
+    print("matplotlib =", mpl.__version__)
+    import h5py.version
+    print("h5py = ", h5py.version.version)
+    print("hdf5 = ", h5py.version.hdf5_version)
+
 class ParseInput():
     def __init__(self, input_string):
         self.type = input_string.split(':')[0]
@@ -249,6 +261,7 @@ class Main():
     
 
 if __name__ == "__main__":
+    print_versions()
     main = Main()
     main.preprocess()
     main.process()
