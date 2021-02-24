@@ -10,7 +10,7 @@ Module mk_trend
     REAL*4, DIMENSION(:), INTENT(IN) :: dat,ts
 
     REAL*4, INTENT(OUT)       :: z, p, Sn
-    REAL*4, INTENT(OUT)    :: nx
+    INTEGER*4, INTENT(OUT)    :: nx
 
     INTEGER                 :: i, j, k, g, ns
     REAL*4, ALLOCATABLE, DIMENSION(:) :: a, x, unique_x
