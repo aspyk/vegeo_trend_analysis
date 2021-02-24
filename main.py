@@ -9,6 +9,9 @@ import yaml
 
 def print_versions():
     print('Python '+sys.version)
+    if sys.hexversion < 0x30501f0: # = v3.5.1 final 0
+        print "ERROR: Python >= 3.5 required."
+        sys.exit()
     import numpy as np
     print("numpy =", np.__version__)
     import pandas as pd

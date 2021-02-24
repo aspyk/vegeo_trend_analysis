@@ -229,6 +229,7 @@ def plot_trends(product, chunks, plot_name, plot_choice, scale_tendency, config)
                 #scat = ax.scatter(pts[1], pts[0], c=trends['sn'], vmin=vn, vmax=vx, cmap=cm)
                 #sc = ax.scatter(chunks.site_coor.LONGITUDE, chunks.site_coor.LATITUDE, c=trends[pvar], vmin=vn, vmax=vx, cmap=cm)
                 sc = ax.scatter(chunks.site_coor.LONGITUDE, chunks.site_coor.LATITUDE, c=trends[rvar], **plot_param[rvar])
+                #sc = ax.scatter(chunks.site_coor.LONGITUDE, chunks.site_coor.LATITUDE, c=trends[rvar], **plot_param[rvar], edgecolors='k', s=16)
                 
                 # create an axes on the right side of ax. The width of cax will be 5%
                 # of ax and the padding between cax and ax will be fixed at 0.05 inch.

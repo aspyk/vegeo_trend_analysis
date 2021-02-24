@@ -75,19 +75,20 @@ def processInput_trends(subchunk, parent_iteration, child_iteration):
                          + "_SUBCHUNK" + np.str(child_iteration)   
                          + "_" + '_'.join(subchunk.get_limits('global', 'str'))
                          + '.nc')
+        subchunk_fname = param.output_path / write_string0
+        ## Check if cache file already exists and must be overwritten
+        if not param.b_delete:
+            if subchunk_fname.is_file():
+                print ('INFO: {} already exists. Use -d option to overwrite it.'.format(write_string0))
+                return
+
     elif subchunk.input=='points':
         print('### Chunk {} > subchunk {} started.'.format(parent_iteration, child_iteration))
         print(param.input_file)
         str_date_range = param.input_file.stem.replace('timeseries','')
         write_string0 = 'merged_trends{}.nc' .format(str_date_range) 
-
-    ## Check if cache file already exists and must be overwritten
-    subchunk_fname = param.output_path / write_string0
-
-    if not param.b_delete:
-        if subchunk_fname.is_file():
-            print ('INFO: {} already exists. Use -d option to overwrite it.'.format(write_string0))
-            return
+        subchunk_fname = param.output_path / write_string0
+        ## Result file is always overwritten in the case of point input
 
     ## Read the input time series file from main chunk, configured length of time X 500 X 500; it may vary if different chunks are used
     hdf_ts = Dataset(param.input_file, 'r', format='NETCDF4')
