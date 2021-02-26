@@ -162,7 +162,9 @@ def plot_trends(product, chunks, plot_name, plot_choice, scale_tendency, config)
         input_trend_file = latest_path
     #input_trend_file = 'output_trend/c3s_al_bbdh_AVHRR/2bfc9d_CHUNK0_SUBCHUNK0_0_726_0_1.nc' # DEBUG: harcoded file name
     output_path = pathlib.Path(config['output_path']['plot']) / product.name
-
+    # Make dir if not exists
+    output_path.mkdir(parents=True, exist_ok=True)
+    
     print('INFO: Read {}'.format(input_trend_file))
 
     ## If input are points, show a world map with scatter plot
@@ -176,7 +178,7 @@ def plot_trends(product, chunks, plot_name, plot_choice, scale_tendency, config)
         trends['pval'] = nc_output.variables['chunk_scores_p_val'][:].ravel()
         trends['zval'] = nc_output.variables['chunk_scores_z_val'][:].ravel()
         trends['len'] = nc_output.variables['chunk_scores_length'][:].ravel()
-        trends['sn']  = nc_output.variables['chunk_scores_Sn_val'][:].ravel()
+        trends['sn']  = nc_output.variables['chunk_scores_Sn_val'][:].ravel() * 365
         nc_output.close()
 
 
@@ -194,7 +196,7 @@ def plot_trends(product, chunks, plot_name, plot_choice, scale_tendency, config)
         ## Choose variable to plot
         pvar = 'pval' 
         
-        fig, axs = plt.subplots(2,2)
+        fig, axs = plt.subplots(2,2, figsize=(18, 10))
         axs = axs.ravel()
         
         ptype = 2
@@ -229,7 +231,6 @@ def plot_trends(product, chunks, plot_name, plot_choice, scale_tendency, config)
                 #scat = ax.scatter(pts[1], pts[0], c=trends['sn'], vmin=vn, vmax=vx, cmap=cm)
                 #sc = ax.scatter(chunks.site_coor.LONGITUDE, chunks.site_coor.LATITUDE, c=trends[pvar], vmin=vn, vmax=vx, cmap=cm)
                 sc = ax.scatter(chunks.site_coor.LONGITUDE, chunks.site_coor.LATITUDE, c=trends[rvar], **plot_param[rvar])
-                #sc = ax.scatter(chunks.site_coor.LONGITUDE, chunks.site_coor.LATITUDE, c=trends[rvar], **plot_param[rvar], edgecolors='k', s=16)
                 
                 # create an axes on the right side of ax. The width of cax will be 5%
                 # of ax and the padding between cax and ax will be fixed at 0.05 inch.
@@ -278,8 +279,12 @@ def plot_trends(product, chunks, plot_name, plot_choice, scale_tendency, config)
                                              product.start_date.strftime('%Y-%m-%d'),
                                              product.end_date.strftime('%Y-%m-%d'),
                                              rvar) )
-        #plt.savefig('res_c3s.png')
-        plt.show()
+
+        img_path = output_path/'res_c3s.png'
+        plt.savefig(str(img_path))
+        print('Image saved to:', str(img_path))
+
+        #plt.show()
 
         sys.exit()
 
@@ -289,9 +294,6 @@ def plot_trends(product, chunks, plot_name, plot_choice, scale_tendency, config)
     x1,x2,y1,y2 = chunks.get_limits('global', 'tuple')
     zone_bnd_ext = (slice(y1-1,y2+1), slice(x1-1,x2+1)) # extended zone to compute cell corners
 
-    # Make dir if not exists
-    output_path.mkdir(parents=True, exist_ok=True)
-    
     print('*** PLOT TRENDS')
     
     ## Read merged data
