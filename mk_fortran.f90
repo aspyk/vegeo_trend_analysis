@@ -9,13 +9,14 @@ Module mk_trend
     INTEGER, INTENT(IN) :: ndat
     REAL*4, DIMENSION(:), INTENT(IN) :: dat,ts
 
-    REAL*4, INTENT(OUT)       :: z, p, Sn
-    INTEGER*4, INTENT(OUT)    :: nx
+    REAL*8, INTENT(OUT)       :: z, p, Sn
+    INTEGER*8, INTENT(OUT)    :: nx
 
-    INTEGER                 :: i, j, k, g, ns
+    INTEGER*8                 :: i, j, k, g, ns
     REAL*4, ALLOCATABLE, DIMENSION(:) :: a, x, unique_x
     REAL*4, ALLOCATABLE, DIMENSION(:) :: s_array
-    REAL*4                    :: s, var_s, tp
+    REAL*8                    :: s, tp
+    REAL*8                    :: var_s
 
     LOGICAL    :: debug
 
@@ -30,12 +31,11 @@ Module mk_trend
     !if (debug) write(*,*) 'remove nan and negative...'
     nx = 0
     DO i = 1,ndat
-      IF (ts(i) .NE. 999) THEN
+      !IF (ts(i) .NE. 999) THEN
+      IF (ts(i) .EQ. ts(i)) THEN
         nx = nx+1
         a(nx) = dat(i)
         x(nx) = ts(i)
-      !ELSE
-	!print*, ts(i)      
       ENDIF
     ENDDO
     
@@ -63,8 +63,9 @@ Module mk_trend
     
     ! # calculate the var(s)
     !if (debug) write(*,*) 'calculate the var...'
+    !write(*,*) g , nx
     IF (g .EQ. nx) THEN
-      var_s = REAL(nx*(nx-1)*(2*nx+5))/18.
+      var_s = REAL(nx*(nx-1)*(2*nx+5), 8)/18.
     ELSE
       var_s = 0.
       DO i = 1,g
@@ -74,9 +75,12 @@ Module mk_trend
         ENDDO
         var_s = var_s+(tp*(tp-1)*(2*tp+5))
       ENDDO
-      var_s = (REAL(nx*(nx-1)*(2*nx+5))-var_s)/18.
+      var_s = (REAL(nx*(nx-1)*(2*nx+5), 8)-var_s)/18.
     ENDIF
-    
+   
+    !write(*,*) nx, var_s
+    !write(*,*) nx, s
+
     IF (s .GT. 0) THEN
       z = (s-1)/SQRT(var_s)
     ELSEIF (s .EQ. 0) THEN
@@ -120,9 +124,9 @@ Module mk_trend
   ! --------------------------------------------------------------------
 
   FUNCTION ncdf(x)
-    REAL, INTENT(IN) :: x
-    REAL :: ncdf
-    REAL :: z, t, r
+    REAL*8, INTENT(IN) :: x
+    REAL*8 :: ncdf
+    REAL*8 :: z, t, r
     z = abs(x/SQRT(2.))
     t = 1. / (1. + 0.5*z)
     r = t * exp(-z*z-1.26551223+t*(1.00002368+t*(.37409196+ &
