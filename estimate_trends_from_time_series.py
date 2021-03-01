@@ -163,17 +163,9 @@ def processInput_trends(subchunk, parent_iteration, child_iteration):
                 print('t2', timer()-t0)
                 t0 = timer()
 
-            data_test[np.isnan(data_test)==1]=999  
-            
-            if b_deb:
-                print('t3', timer()-t0)
-                t0 = timer()
-
-            '''we put 999 for missing values so as to validate with fortran code; man-kendall scores are estimated by a fortran file
-            already imported'''
             if 1:
                 ## orinal mann-kendall test :
-                bla = data_test[data_test!=999]
+                bla = data_test[~np.isnan(data_test)]
                 if bla.size > 0:
                     #print('min/mean/max/nb/nb_unique', bla.min(), bla.mean(), bla.max(), len(bla), len(np.unique(bla)))
                     #print(bla)
