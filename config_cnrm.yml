@@ -1,0 +1,228 @@
+ #  Parameters
+ #  ----------
+ #  source : 'msg' or 'c3s'
+ #  mode : 'predict' or 'walk'
+ #      - 'predict' : yield a template and a frequency to find matching files
+ #      - 'walk' : search for *.nc files in root/year and extract date from filename
+
+---
+lst_missing:
+    root: "/cnrm/vegeo/SAT/DATA/MSG_LST_CDR_OR_MISSING_15min"
+    template: "HDF5_LSASAF_MSG_LST_MSG-Disk_%Y%m%d%H%M"
+    freq: '15T'
+    var: ''
+
+lst_nrt:
+    root: "/cnrm/vegeo/SAT/DATA/MSG_LST_CDR_OR_NRT_15min"
+    template: "HDF5_LSASAF_MSG_LST_MSG-Disk_%Y%m%d%H%M"
+    freq: '15T'
+
+lai:
+ #    root: '/cnrm/vegeo/SAT/DATA/MSG_LAI_DAILY_CDR'
+ #    mode: 'predict'
+ #    template: 'HDF5_LSASAF_MSG_LAI_MSG-Disk_%Y%m%d0000'
+ #    freq: '1D'
+ #    var: 'LAI'
+ #
+ #  On VITO VM:
+ #  C3S_LAI_Global_1KM_V0 (1999 -> 2020)
+ #  C3S_LAI_Global_1KM_V1/V1.0.1 (1998 -> 2014)
+ #  C3S_LAI_Global_1KM_V2/V2.0.1 (2013 -> 2020)
+ #  C3S_LAI_Global_4KM_V1/V1.0.1 (1981 -> 2005)
+    source: 'c3s'
+ #  root: '/data/c3s_pdf_live/MTDA/C3S_LAI_Global_1KM_V0'
+    root: '/data/c3s_pdf_live/MTDA/C3S_LAI_Global_1KM_V2/V2.0.1'
+    mode: 'walk'  
+    freq: '10D'
+    var: 'LAI'
+
+evapo:
+    root: '/cnrm/vegeo/SAT/DATA/LSA_SAF_METREF_CDR_DAILY'
+    template: 'HDF5_LSASAF_MSG_METREF_MSG-Disk_%Y%m%d0000'
+    freq: '1D'
+    var: 'METREF'
+
+ # TODO
+fapar:
+    root: 'xxx'
+    template: 'xxx'
+    freq: '1D'
+
+ # ICARE: 2005-01-01 -> 2016-09-18 (~2005-2016)
+al_icare:
+    root: '/cnrm/vegeo/SAT/DATA/AERUS_GEO/Albedo_v104'
+    template: '%Y/SEV_AERUS-ALBEDO-D3_%Y-%m-%d_V1-04.h5'
+    freq: '1D'
+
+ # MDAL: 2004-01-19 -> 2015-12-31 (~2004-2015)
+al_mdal:
+    root: '/cnrm/vegeo/SAT/DATA/MSG/Reprocessed-on-2017/MDAL'
+    template: '%Y/%m/%d/HDF5_LSASAF_MSG_ALBEDO_MSG-Disk_%Y%m%d0000'
+    freq: '1D'
+    var: 'AL-BB-DH'
+
+ # MDAL_NRT: 2015-11-11 -> today (~2016-today)
+ # 2019 -> 2020 : HDF5_xxx0000
+ # 2015 -> 2018 : HDF5_xxx0000.h5
+al_mdal_nrt:
+    root: '/cnrm/vegeo/SAT/DATA/MSG/NRT-Operational/AL2'
+    template: 'AL2-%Y%m%d/HDF5_LSASAF_MSG_ALBEDO_MSG-Disk_%Y%m%d0000*'
+    freq: '1D'
+    var: 'AL-BB-DH'
+
+ #-----------
+ # ON VITO VM
+ #-----------
+
+
+ # AL_BB_DH 
+ # --------
+ 
+c3s_al_bbdh_AVHRR:
+    root: '/data/c3s_pdf_live/MTDA/C3S_ALBB_DH_Global_4KM_V2/V2.0.1'
+    <<: *param
+    <<: &varbbdh
+        var:
+            - 'AL_DH_BB'
+            - 'AL_DH_NI'
+            - 'AL_DH_VI'
+
+c3s_al_bbdh_VGT:
+    root: '/data/c3s_pdf_live/MTDA/C3S_ALBB_DH_Global_1KM_V2/V2.0.1'
+    <<: *param
+    <<: &varbbdh
+    
+c3s_al_bbdh_PROBAV:
+    root: '/data/c3s_pdf_live/MTDA/C3S_ALBB_DH_Global_1KM_V2/V2.0.1'
+    <<: *param
+    <<: &varbbdh
+
+c3s_al_bbdh_SENTINEL3:
+    root: '/data/c3s_pdf_live/MTDA/C3S_ALBB_DH_Global_300M_V3/V3.0.1'
+    <<: *param
+    <<: &varbbdh
+
+ # AL_BB_BH 
+ # --------
+ 
+c3s_al_bbdh_AVHRR:
+    root: '/data/c3s_pdf_live/MTDA/C3S_ALBB_BH_Global_4KM_V2/V2.0.1'
+    <<: *param
+    <<: &varbbbh
+        var:
+            - 'AL_BH_BB'
+            - 'AL_BH_NI'
+            - 'AL_BH_VI'
+
+c3s_al_bbdh_VGT:
+    root: '/data/c3s_pdf_live/MTDA/C3S_ALBB_BH_Global_1KM_V2/V2.0.1'
+    <<: *param
+    <<: &varbbbh
+    
+c3s_al_bbdh_PROBAV:
+    root: '/data/c3s_pdf_live/MTDA/C3S_ALBB_BH_Global_1KM_V2/V2.0.1'
+    <<: *param
+    <<: &varbbbh
+
+c3s_al_bbdh_SENTINEL3:
+    root: '/data/c3s_pdf_live/MTDA/C3S_ALBB_BH_Global_300M_V3/V3.0.1'
+    <<: *param
+    <<: &varbbbh
+
+ # AL_SP_DH 
+ # --------
+ 
+c3s_al_spdh_AVHRR:
+    root: '/data/c3s_pdf_live/MTDA/C3S_ALSP_DH_Global_4KM_V2/V2.0.1'
+    <<: *param
+    <<: &varspdh
+        var:
+            - 'AL_DH_B0'
+            - 'AL_DH_B2'
+            - 'AL_DH_B3'
+            - 'AL_DH_MIR'
+
+c3s_al_spdh_VGT:
+    root: '/data/c3s_pdf_live/MTDA/C3S_ALSP_DH_Global_1KM_V2/V2.0.1'
+    <<: *param
+    <<: &varspdh
+    
+c3s_al_spdh_PROBAV:
+    root: '/data/c3s_pdf_live/MTDA/C3S_ALSP_DH_Global_1KM_V2/V2.0.1'
+    <<: *param
+    <<: &varspdh
+
+c3s_al_spdh_SENTINEL3:
+    root: '/data/c3s_pdf_live/MTDA/C3S_ALSP_DH_Global_300M_V3/V3.0.1'
+    <<: *param
+    <<: &varspdh
+        var:
+            - 'AL_DH_Oa03'   
+            - 'AL_DH_Oa04'   
+            - 'AL_DH_Oa07'   
+            - 'AL_DH_Oa17'   
+            - 'AL_DH_Oa21'  
+            - 'AL_DH_S1'     
+            - 'AL_DH_S2'     
+            - 'AL_DH_S5'     
+            - 'AL_DH_S6'     
+
+
+ # AL_SP_BH 
+ # --------
+ 
+c3s_al_spdh_AVHRR:
+    root: '/data/c3s_pdf_live/MTDA/C3S_ALSP_BH_Global_4KM_V2/V2.0.1'
+    <<: *param
+    <<: &varspbh
+        var:
+            - 'AL_DH_B0'
+            - 'AL_DH_B2'
+            - 'AL_DH_B3'
+            - 'AL_DH_MIR'
+
+c3s_al_spdh_VGT:
+    root: '/data/c3s_pdf_live/MTDA/C3S_ALSP_BH_Global_1KM_V2/V2.0.1'
+    <<: *param
+    <<: &varspbh
+    
+c3s_al_spdh_PROBAV:
+    root: '/data/c3s_pdf_live/MTDA/C3S_ALSP_BH_Global_1KM_V2/V2.0.1'
+    <<: *param
+    <<: &varspbh
+
+c3s_al_spdh_SENTINEL3:
+    root: '/data/c3s_pdf_live/MTDA/C3S_ALSP_BH_Global_300M_V3/V3.0.1'
+    <<: *param
+    <<: &varspbh
+        var:
+            - 'AL_BH_Oa03'   
+            - 'AL_BH_Oa04'   
+            - 'AL_BH_Oa07'   
+            - 'AL_BH_Oa17'   
+            - 'AL_BH_Oa21'  
+            - 'AL_BH_S1'     
+            - 'AL_BH_S2'     
+            - 'AL_BH_S5'     
+            - 'AL_BH_S6'     
+
+
+ #---------------------------------------------
+
+ # Dir to store cache and output
+output_path:
+    extract: './output_extract'
+    merge: './output_merge'
+    trend: './output_trend'
+    plot: './output_plot'
+    merged_filename: 'merged_trends.nc'
+
+ # Input file with reference site coordinates
+ # (read only if input type = latloncsv)
+ref_site_coor:
+    #   AVHRR: './LANDVAL2.csv'
+    AVHRR: './LANDVAL2_DOM.csv'
+    VGT: './LANDVAL2_avhrr_topleft.csv'
+    PROBAV: './LANDVAL2_avhrr_topleft.csv'
+    SENTINEL3: './LANDVAL2_avhrr_topleft.csv'
+
