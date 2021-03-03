@@ -113,8 +113,8 @@ class CoordinatesConverter():
         self.list = [self]
 
         ## Get the param corresponding to the resolution
-        param_sensor = {'AVHRR':'4km', 'VGT':'1km', 'PROBAV':'1km'}
-        param_resol = {'4km':(4200, 10800, 1), '1km':(15680, 40320, 4), '300m':('xxx', 'xxx', 12)}
+        param_sensor = {'AVHRR':'4km', 'VGT':'1km', 'PROBAV':'1km', 'SENTINEL3':'300m'}
+        param_resol = {'4km':(4200, 10800, 1), '1km':(15680, 40320, 4), '300m':(47040, 120960, 12)}
         self.c3s_resol = param_sensor[self.sensor]
         self.lat_len, self.lon_len, self.box_size = param_resol[self.c3s_resol]
         
@@ -223,10 +223,11 @@ class Product():
     ## Sensor dates
     #NOAA_satellite Start_date End_date
     sensor_dates = {}
-    sensor_dates['AVHRR']  = ('20-09-1981', '31-12-2005')
-    sensor_dates['VGT']    = ('10-04-1998', '31-05-2014')
-    sensor_dates['PROBAV'] = ('31-10-2013', '30-06-2020')
-    sensor_dates['MERGED'] = ('20-09-1981', '30-06-2020')
+    sensor_dates['AVHRR']     =  ('20-09-1981', '31-12-2005')
+    sensor_dates['VGT']       =  ('10-04-1998', '31-05-2014')
+    sensor_dates['PROBAV']    =  ('31-10-2013', '30-06-2020')
+    sensor_dates['SENTINEL3'] =  ('10-07-2018', '31-12-2030')
+    sensor_dates['MERGED']    =  ('20-09-1981', '31-12-2030')
 
     sensor_dates = {k: [datetime.strptime(i, "%d-%m-%Y") for i in v] for k,v in sensor_dates.items()}
 

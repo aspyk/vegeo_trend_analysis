@@ -44,7 +44,7 @@ class Main():
         msg_vars = ['albedo', 'lai', 'evapo', 'dssf', 'lst']
         c3s_vars = ['al_bbdh','al_bbbh','al_spdh','al_spbh']
         c3s_vars = ['c3s_'+i for i in c3s_vars]
-        c3s_vars = [i+r for i in c3s_vars for r in ['_AVHRR','_VGT','_PROBAV']]
+        c3s_vars = [i+r for i in c3s_vars for r in ['_AVHRR','_VGT','_PROBAV','_SENTINEL3']]
         self.product_names = msg_vars + c3s_vars 
 
 
@@ -84,6 +84,8 @@ class Main():
                             type=int)
         parser.add_argument('-d','--delete_cache', help='Delete cache by overwritting it.', action='store_true')
         parser.add_argument('-np','--nproc', help='number of process to run the trend analysis', default=1, type=int)
+        parser.add_argument('-g','--debug', help='Some debug option', default=0, type=int)
+        parser.add_argument('-c','--config', help='YAML config file', required=True)
         
         self.args = parser.parse_args()
 
@@ -127,7 +129,7 @@ class Main():
         dic_zone['Fra']  = [1740, 2060,  310,  510]
         
         ## Read config yaml file
-        with open("config.yml", 'r') as stream:
+        with open(self.args.config, 'r') as stream:
             try:
                 self.yfile = yaml.safe_load(stream)
             except yaml.YAMLError as exc:
@@ -157,12 +159,12 @@ class Main():
                 else:
                     input_coor = self.args.input.param=='config'
                 
-                ## Can use a subset of points for debugging if 0
-                if 1:
-                    self.chunks = generic.CoordinatesConverter(input_coor, sensor=sensor)
-                else: # DEBUG
+                ## Can use a subset of points for debugging if --debug = 1
+                if self.args.debug==1:
                     slist = ['FRENCHMAN_FLAT', 'BELMANIP_00332', 'Egypt#1', 'EL_FARAFRA', 'BELMANIP_00416', 'DOM1']
                     self.chunks = generic.CoordinatesConverter(input_coor, sensor=sensor, sub=slist)
+                else: 
+                    self.chunks = generic.CoordinatesConverter(input_coor, sensor=sensor)
                 
                 ## Finally Product objects
                 prod = generic.Product(p, self.args.start_date, self.args.end_date, self.chunks)

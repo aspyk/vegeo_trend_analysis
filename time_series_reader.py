@@ -407,7 +407,8 @@ class TimeSeriesExtractor():
 
     def _get_c3s_albedo_points(self):
 
-        age_chunk = self._extract_points('AGE', np.int16)
+        if self.chunk.sensor != 'SENTINEL3':
+            age_chunk = self._extract_points('AGE', np.int16)
         q_chunk = self._extract_points('QFLAG', np.uint8)
         
         d = {}
@@ -424,19 +425,21 @@ class TimeSeriesExtractor():
             # Optionally, also the following thresholds can be considered:
             # - *_ERR > 0.2
             # - AGE > 30
-            b_print_sel = 0
+            b_print_sel = 1
             # -9999 is used instead of np.nan because data is of type int
-            discard = -9999
-            prod_chunk[(prod_chunk<0) | (prod_chunk>10000)] = discard
-            if b_print_sel: print(self._count_nan(prod_chunk))
-            prod_chunk[~((q_chunk & 0b11) == 0b01)] = discard # if bit 1 and 0 are not land (= 01) set np.nan
-            if b_print_sel: print(self._count_nan(prod_chunk))
-            prod_chunk[(q_chunk & (1<<7)) == 1] = discard # if bit 7 == 1 set np.nan
-            if b_print_sel: print(self._count_nan(prod_chunk))
+            discard = -32767
+            prod_chunk[ (prod_chunk<0) | (prod_chunk>10000) ] = discard
+            if b_print_sel: self._count_val('data range', prod_chunk, discard)
+            print(np.vectorize(np.binary_repr)(q_chunk, width=8))
+            prod_chunk[ ~((q_chunk & 0b11) == 0b01) ] = discard # if bit 1 and 0 are not land (= 01) set np.nan
+            if b_print_sel: self._count_val('land', prod_chunk, discard)
+            prod_chunk[ ((q_chunk >> 7) & 1) == 1 ] = discard # if bit 7 is set 
+            if b_print_sel: self._count_val('algo failed', prod_chunk, discard)
             prod_chunk[error_chunk > 2000] = discard 
-            if b_print_sel: print(self._count_nan(prod_chunk))
-            prod_chunk[age_chunk > 30] = discard 
-            if b_print_sel: print(self._count_nan(prod_chunk))
+            if b_print_sel: self._count_val('error', prod_chunk, discard)
+            if self.chunk.sensor != 'SENTINEL3':
+                prod_chunk[age_chunk > 30] = discard 
+                if b_print_sel: self._count_val('age', prod_chunk, discard)
             #sys.exit()
             #prod_chunk = prod_chunk.
 
@@ -461,10 +464,10 @@ class TimeSeriesExtractor():
 
         return d
 
-    def _count_nan(a):
-        return np.count_nonzero(np.isnan(a))    
+    def _count_val(self, txt, a, val):
+        print("{}: {}".format(txt, np.count_nonzero(a==val)) )   
 
-    def _count_notnan(a):
+    def _count_notnan(self, a):
         return np.count_nonzero(~np.isnan(a))    
 
     def extract_product(self):
