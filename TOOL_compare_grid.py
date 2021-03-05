@@ -62,6 +62,8 @@ class Main:
                       columns=['LATITUDE','LONGITUDE','NAME'],
                       sep=';')
 
+        print("-- Save modified top-left csv file to:", out_csv)
+
 
     def plot_scatter(self, lat, lon):
         self.ax.scatter(lon, lat)
@@ -138,7 +140,7 @@ class Main:
         if origin=='center':
             self.coor_vgt = generic.CoordinatesConverter(csvcoorfile, sensor='VGT')
         elif origin=='topleft':
-            out_avhrr_csv_name = 'LANDVAL2_avhrr_topleft.csv'
+            out_avhrr_csv_name = csvcoorfile.replace('.csv', '_avhrr_topleft.csv')
             self.save_avhrr_ref_corner(f1, out_avhrr_csv_name)
             self.coor_vgt = generic.CoordinatesConverter(out_avhrr_csv_name, sensor='VGT')
 
