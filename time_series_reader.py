@@ -544,10 +544,6 @@ class TimeSeriesExtractor():
                 prod_chunk = self._get_c3s_albedo_points()
 
 
-        ## remove invalid data
-        if self.product=='lai':
-            prod_chunk = np.where(prod_chunk==-10, np.nan, prod_chunk/1000.)            
-
         return prod_chunk
     
     def _write_ts_chunk(self, out_var):
@@ -558,31 +554,46 @@ class TimeSeriesExtractor():
         'data': numpy array, the actual data 
         'type': string, representing the data type
         """
-    
-        ds = netCDF4.Dataset(self.write_file, 'w', format='NETCDF4')
+        ## New H5 simplified version
+        if 1: 
+            hf = h5py.File(self.write_file, 'w')
+            
+            if len(out_var)>0:
+                for v in out_var:
+                    hf.create_dataset(v['name'], data=v['data'].astype(v['type']))
+                    #hf.create_dataset(v['name'], data=v['data'].astype(v['type']), compression="gzip", compression_opts=9)
+            
+            hf.close()
+            print(">>> Data chunk written to:", self.write_file)
+            return self.write_file
         
-        if len(out_var)>0:
-            for v in out_var:
-                tdim = []
-                for idd,d in enumerate(v['data'].shape):
-                    dname = '{}_d{}'.format(v['name'], idd)
-                    ds.createDimension(dname, d)
-                    tdim.append(dname)
-                tdim = tuple(tdim)
+        ## Original NETCDF4 version
+        else:
+            ds = netCDF4.Dataset(self.write_file, 'w', format='NETCDF4')
+            
+            if len(out_var)>0:
+                for v in out_var:
+                    tdim = []
+                    for idd,d in enumerate(v['data'].shape):
+                        dname = '{}_d{}'.format(v['name'], idd)
+                        ds.createDimension(dname, d)
+                        tdim.append(dname)
+                    tdim = tuple(tdim)
 
-                var = ds.createVariable(v['name'], v['type'], tdim, zlib=True)
-                var_data = v['data']
-                var[:] = var_data
-        
-        ds.close()
-        print(">>> Data chunk written to:", self.write_file)
-        return self.write_file
+                    var = ds.createVariable(v['name'], v['type'], tdim, zlib=True)
+                    var_data = v['data']
+                    var[:] = var_data
+            
+            ds.close()
+            print(">>> Data chunk written to:", self.write_file)
+            return self.write_file
         
     def _check_previous_cache(self):
-        """
+        """ 
         Check if cache file already exists and must be overwritten
         """
-        write_file = self.output_path / self.product / (self.hash+'_timeseries_'+'_'.join(self.chunk.get_limits('global', 'str'))+'.nc')
+        #write_file = self.output_path / self.product / (self.hash+'_timeseries_'+'_'.join(self.chunk.get_limits('global', 'str'))+'.nc')
+        write_file = self.output_path / self.product / (self.hash+'_timeseries_'+'_'.join(self.chunk.get_limits('global', 'str'))+'.h5')
 
         self.write_file = write_file
         
@@ -671,13 +682,13 @@ class TimeSeriesExtractor():
                 return
 
 
-            ## Try with a more generic writer
+            ## Write output data
             out_var = []
             for name, data in data_ts.items():
-                out_var.append({'type':np.float, 'name':name, 'data':data})
-            out_var.append({'type':np.int64, 'name':'ts_dates', 'data':time_ts})
-            out_var.append({'type':'S2', 'name':'point_names', 'data':np.array(chunk.site_coor['NAME'])})
-            out_var.append({'type':np.uint16, 'name':'global_id', 'data':self.df_full['global_id'].values})
+                out_var.append({'type':np.float, 'name':'vars/'+name, 'data':data})
+            out_var.append({'type':np.int64, 'name':'meta/ts_dates', 'data':time_ts})
+            out_var.append({'type':'S2', 'name':'meta/point_names', 'data':np.array(chunk.site_coor['NAME'])})
+            out_var.append({'type':np.uint16, 'name':'meta/global_id', 'data':self.df_full['global_id'].values})
             self._write_ts_chunk(out_var)
             write_files.append(self.write_file)
 

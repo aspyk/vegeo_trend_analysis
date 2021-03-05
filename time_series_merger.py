@@ -57,15 +57,12 @@ class TimeSeriesMerger():
         Return 2 dict
         """
         with h5py.File(fname, mode='r') as h:
-            dic_meta = {'ts_dates':None, 'global_id':None, 'point_names':None}
+            dic_meta = {}
             dic_var = {}
-            for k in h.keys():
-                # keep var without '_d?' suffix
-                if k[-3:-1] != '_d':
-                    if k in dic_meta.keys():
-                        dic_meta[k] = h[k][:]
-                    else:
-                        dic_var[k] = h[k][:]
+            for k in h['meta'].keys():
+                dic_meta[k] = h['meta/'+k][:]
+            for k in h['vars'].keys():
+                dic_var[k] = h['vars/'+k][:]
 
         dic_meta, dic_var = self._trim_timeseries(dic_meta, dic_var)
         
@@ -151,9 +148,9 @@ class TimeSeriesMerger():
         outpath = self.output_path / fname
         with h5py.File(outpath, mode='w') as h:
             for k,v in meta_new.items():
-                h[k] = v
+                h['meta/'+k] = v
             for k,v in var_new.items():
-                h[k] = v
+                h['vars/'+k] = v
             h.attrs['product'] = self.product
         print('Merged file saved to:', outpath)
 
