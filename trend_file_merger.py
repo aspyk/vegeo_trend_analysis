@@ -140,7 +140,7 @@ def merge_trends(product, chunks, config, phash):
         plt.savefig('tile_map_glob.png')
         plt.imshow(tile_map_loc)
         plt.savefig('tile_map_loc.png')
-    
+
 
 
 def plot_trends(product, chunks, plot_name, plot_choice, scale_tendency, config):
@@ -152,7 +152,21 @@ def plot_trends(product, chunks, plot_name, plot_choice, scale_tendency, config)
     import matplotlib.pyplot as plt
     # import cartopy.crs as ccrs # not find on VITO ?
     from mpl_toolkits.axes_grid1 import make_axes_locatable
+    from matplotlib.transforms import Bbox
     
+    def full_extent(ax, pad=0.0):
+        """Get the full extent of an axes, including axes labels, tick labels, and
+        titles."""
+        # For text objects, we need to draw the figure first, otherwise the extents
+        # are undefined.
+        ax.figure.canvas.draw()
+        items = ax.get_xticklabels() + ax.get_yticklabels() 
+        #items += [ax, ax.title, ax.xaxis.label, ax.yaxis.label]
+        items += [ax, ax.title]
+        bbox = Bbox.union([item.get_window_extent() for item in items])
+
+        return bbox.expanded(1.0 + pad, 1.0 + pad)
+
     
     if chunks.input=='box':
         input_trend_file = pathlib.Path(config['output_path']['trend']) / product.name / (product.hash+'_'+config['output_path']['merged_filename'])
@@ -215,12 +229,12 @@ def plot_trends(product, chunks, plot_name, plot_choice, scale_tendency, config)
                 #extent = [lon[0]-dlon, lon[-1]+dlon, lat[0]-dlat, lat[-1]+dlat]
                 extent = [lon[0]-dlon, lon[-1]+dlon, lat[-1]+dlat, lat[0]-dlat]
 
-                print('extent=', extent)
+                #print('extent=', extent)
 
                 cm = 'jet'
                 cm = 'gist_ncar'
                 #mat = ax.imshow(data[0,::2,::2], cmap=cm)
-                print(mask.shape)
+                #print(mask.shape)
                 for ax in axs:
                     mat = ax.imshow(mask, extent=extent, cmap='terrain')
             
@@ -277,14 +291,21 @@ def plot_trends(product, chunks, plot_name, plot_choice, scale_tendency, config)
                    
                     fig.canvas.mpl_connect("motion_notify_event", hover)
 
-                ax.set_title("{} | {} to {} | {}".format(product.shorten.replace('_','-').upper(),
-                                                 product.start_date.strftime('%Y-%m-%d'),
-                                                 product.end_date.strftime('%Y-%m-%d'),
-                                                 rvar) )
-
+                ax.set_title("{} | {} | {} to {} | {}".format(product.shorten.replace('_','-').upper(),
+                                                              invar, 
+                                                              product.start_date.strftime('%Y-%m-%d'),
+                                                              product.end_date.strftime('%Y-%m-%d'),
+                                                              rvar) )
+            
             img_path = output_path/'{}_{}.png'.format(case_name, invar)
-            plt.savefig(str(img_path))
+            fig.savefig(str(img_path))
             print('Image saved to:', str(img_path))
+            
+            for ax,rvar in zip(axs,res_vars):
+                extent = ax.get_tightbbox(fig.canvas.renderer).transformed(fig.dpi_scale_trans.inverted())
+                img_path = output_path/'{}_{}_{}.png'.format(case_name, invar, rvar)
+                fig.savefig(str(img_path), bbox_inches=extent)
+                print('Image saved to:', str(img_path))
 
         hf.close()
         sys.exit()
