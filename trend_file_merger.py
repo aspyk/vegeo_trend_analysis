@@ -297,17 +297,28 @@ def plot_trends(product, chunks, plot_name, plot_choice, scale_tendency, config)
                                                               product.end_date.strftime('%Y-%m-%d'),
                                                               rvar) )
             
+            ## Export sublplots together
             img_path = output_path/'{}_{}.png'.format(case_name, invar)
             fig.savefig(str(img_path))
             print('Image saved to:', str(img_path))
             
+            ## Export sublplots separately 
             for ax,rvar in zip(axs,res_vars):
                 extent = ax.get_tightbbox(fig.canvas.renderer).transformed(fig.dpi_scale_trans.inverted())
                 img_path = output_path/'{}_{}_{}.png'.format(case_name, invar, rvar)
                 fig.savefig(str(img_path), bbox_inches=extent)
                 print('Image saved to:', str(img_path))
 
+            ## Export results as csv
+            for rvar in res_vars:
+                chunks.site_coor[invar+'_'+rvar] = trends[rvar]
+        
+        csv_path = output_path/'{}.csv'.format(case_name)
+        chunks.site_coor.to_csv(csv_path, sep=';')
+        print('CSV results saved to:', str(csv_path))
+
         hf.close()
+
         sys.exit()
 
 
