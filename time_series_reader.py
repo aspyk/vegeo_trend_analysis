@@ -425,12 +425,12 @@ class TimeSeriesExtractor():
             # Optionally, also the following thresholds can be considered:
             # - *_ERR > 0.2
             # - AGE > 30
-            b_print_sel = 1
+            b_print_sel = 0
             # -9999 is used instead of np.nan because data is of type int
             discard = -32767
             prod_chunk[ (prod_chunk<0) | (prod_chunk>10000) ] = discard
             if b_print_sel: self._count_val('data range', prod_chunk, discard)
-            print(np.vectorize(np.binary_repr)(q_chunk, width=8))
+            if b_print_sel: print(np.vectorize(np.binary_repr)(q_chunk, width=8))
             prod_chunk[ ~((q_chunk & 0b11) == 0b01) ] = discard # if bit 1 and 0 are not land (= 01) set np.nan
             if b_print_sel: self._count_val('land', prod_chunk, discard)
             prod_chunk[ ((q_chunk >> 7) & 1) == 1 ] = discard # if bit 7 is set 

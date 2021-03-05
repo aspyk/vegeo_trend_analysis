@@ -42,7 +42,7 @@ class Main():
     def __init__(self):
         self.zone_names = ['Euro', 'NAfr', 'SAfr', 'SAme', 'Fra']
         msg_vars = ['albedo', 'lai', 'evapo', 'dssf', 'lst']
-        c3s_vars = ['al_bbdh','al_bbbh','al_spdh','al_spbh']
+        c3s_vars = ['al_bbdh','al_bbbh','al_spdh','al_spbh','lai','fapar']
         c3s_vars = ['c3s_'+i for i in c3s_vars]
         c3s_vars = [i+r for i in c3s_vars for r in ['_AVHRR','_VGT','_PROBAV','_SENTINEL3']]
         self.product_names = msg_vars + c3s_vars 
@@ -87,9 +87,12 @@ class Main():
         parser.add_argument('-g','--debug', help='Some debug option', default=0, type=int)
         parser.add_argument('-c','--config', help='YAML config file', required=True)
         
-        self.args = parser.parse_args()
+        if self.batch_args is None:
+            self.args = parser.parse_args()
+        else:
+            self.args = parser.parse_args(self.batch_args)
 
-    def preprocess(self):
+    def preprocess(self, batch_args=None):
         """
         Process the command line options
         """
@@ -117,6 +120,7 @@ class Main():
     
     
         ## pre-process arguments
+        self.batch_args = batch_args
         self._parse_args()
     
         
