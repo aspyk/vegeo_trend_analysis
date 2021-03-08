@@ -2,10 +2,19 @@
 
 ## Setup
 ```
-git clone https://github.com/aspyk/vegeo_trend_analysis
+#git clone https://github.com/aspyk/vegeo_trend_analysis
+# Directly clone the dev branch
+git clone --single-branch --branch feature/genericreader https://github.com/aspyk/vegeo_trend_analysis
 cd vegeo_trend_analysis/
 ./run_setup.sh
 ```
+
+## Test
+```
+pytest test.py -k "AVHRR_plot_all"
+pytest test.py -k "S3_extract_all"
+```
+
 
 ## Usage
 
