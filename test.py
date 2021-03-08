@@ -27,25 +27,26 @@ def run_test(n):
 
 
     ### Run test
-
+    print("Tested command:")
+    print("python main.py", " ".join(test_args[n]))
     m.preprocess(test_args[n])
     m.process()
     return 0
 
 
-def test1():
+def test_AVHRR_trend_5():
     assert run_test(0)==0
 
-def test2():
+def test_AVHRR_plot_5():
     assert run_test(1)==0
 
-def test3():
+def test_AVHRR_plot_all():
     assert run_test(2)==0
 
-def test4():
+def test_S3_extract_5():
     assert run_test(3)==0
 
-def test5():
+def test_S3_extract_all():
     assert run_test(4)==0
 
 

@@ -266,9 +266,13 @@ class Main():
                 
                 title = '{}:{} to {}'.format(prod.hash, self.args.start_date.isoformat(), self.args.end_date.isoformat())
     
-                for var in ['sn','zval','pval','len']:
-                    list_arg = [prod, self.chunks, title, var, 365, self.yfile]
-                    trend_file_merger.plot_trends(*list_arg)
+                if self.chunks.input=='box':
+                    for var in ['sn','zval','pval','len']:
+                        list_arg = [prod, self.chunks, title, var, self.yfile]
+                        trend_file_merger.plot_trends(*list_arg)
+                elif self.chunks.input=='points':
+                    list_arg = [prod, self.chunks, title, self.yfile]
+                    trend_file_merger.plot_trends_scatter(*list_arg)
     
 
 if __name__ == "__main__":
