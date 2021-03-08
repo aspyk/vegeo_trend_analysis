@@ -1,5 +1,11 @@
 # Trend analysis
 
+## Setup
+```
+git clone https://github.com/aspyk/vegeo_trend_analysis
+cd vegeo_trend_analysis/
+./run_setup.sh
+```
 
 ## Usage
 
