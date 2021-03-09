@@ -417,8 +417,7 @@ class TimeSeriesExtractor():
             error_chunk = self._extract_points(v+'_ERR', np.int16)
         
 
-            # Discard pixels in the analysis when:
-            # - Fill value in AL_* (-32767)
+            # Discard pixels in the analysis when (fill value in AL_* is -32767 ):
             # - Outside valid range in AL_* ([0, 10000])
             # - QFLAG indicates ‘sea’ or ‘continental water’ (QFLAG bits 0-1) -> Fill value in product
             # - QFLAG indicates the algorithm failed (QFLAG bit 7) -> Fill value in product
@@ -426,7 +425,7 @@ class TimeSeriesExtractor():
             # - *_ERR > 0.2
             # - AGE > 30
             b_print_sel = 0
-            # -9999 is used instead of np.nan because data is of type int
+            # int value is used instead of np.nan because nan is a float
             discard = -32767
             prod_chunk[ (prod_chunk<0) | (prod_chunk>10000) ] = discard
             if b_print_sel: self._count_val('data range', prod_chunk, discard)
@@ -463,12 +462,60 @@ class TimeSeriesExtractor():
             d[v].reshape((1,-1)) # fake 2D array (1,nb_pts)
 
         return d
+ 
+    def _get_c3s_lai_fapar_points(self):
+
+        q_chunk = self._extract_points('QFLAG', np.uint8)
+        
+        d = {}
+        for v in self.config['var']:
+            prod_chunk = self._extract_points(v, np.int16)
+            #error_chunk = self._extract_points(v+'_ERR', np.int16)
+        
+            # Discard pixels (ie. Apply fill value -65535) in the analysis when:
+            # - Outside valid range in LAI / fAPAR ([0, 65534])
+            # - QFLAG indicates ‘obs_is_fillvalue’ (QFLAG bit 0)
+            # - QFLAG indicates ‘tip_untrusted’ (QFLAG bit 6)
+            # - QFLAG indicates ‘obs unusable’ (QFLAG bit 7)
+
+            b_print_sel = 0
+            # int value is used instead of np.nan because nan is a float
+            discard = -65535
+            prod_chunk[ (prod_chunk<0) | (prod_chunk>65534) ] = discard
+            if b_print_sel: self._count_val('data range', prod_chunk, discard)
+            if b_print_sel: print(np.vectorize(np.binary_repr)(q_chunk, width=8))
+            prod_chunk[ ((q_chunk >> 0) & 1) == 1 ] = discard # if bit 0 is set 
+            if b_print_sel: self._count_val('obs_is_fillvalue', prod_chunk, discard)
+            prod_chunk[ ((q_chunk >> 6) & 1) == 1 ] = discard # if bit 6 is set 
+            if b_print_sel: self._count_val('tip_untrusted', prod_chunk, discard)
+            prod_chunk[ ((q_chunk >> 7) & 1) == 1 ] = discard # if bit 7 is set 
+            if b_print_sel: self._count_val('obs_unusable', prod_chunk, discard)
+            #sys.exit()
+            #prod_chunk = prod_chunk.
+
+            ## Agregate data using quality flag
+            # Count True in each window and keep only when 75% is ok
+            # 1 for 1x1, 12 for 4x4 and 108 for 12x12
+            if self.chunk.c3s_resol=='4km':
+                threshold = 1
+            if self.chunk.c3s_resol=='1km':
+                threshold = 12
+            if self.chunk.c3s_resol=='300m':
+                threshold = 108
+            q_mask = np.count_nonzero(~(prod_chunk==discard), axis=(1,2)) >= threshold
+            print('valid : {0} / {1}'.format(np.count_nonzero(q_mask), self.chunk.dim[1]) )
+            #print('invalid indices:')
+            #print(np.where(q_mask==0)[0])
+            d[v] = 1e-4 * prod_chunk
+            d[v][ d[v]==discard*1e-4 ] = np.nan # replace discard value by nan
+            d[v] = np.nanmean(d[v], axis=(1,2))
+            d[v] = np.where(q_mask,  d[v], np.nan)
+            d[v].reshape((1,-1)) # fake 2D array (1,nb_pts)
+
+        return d
 
     def _count_val(self, txt, a, val):
         print("{}: {}".format(txt, np.count_nonzero(a==val)) )   
-
-    def _count_notnan(self, a):
-        return np.count_nonzero(~np.isnan(a))    
 
     def extract_product(self):
         chunk = self.chunk
@@ -541,7 +588,10 @@ class TimeSeriesExtractor():
                     sys.exit()
                 ## END DEBUG
 
-                prod_chunk = self._get_c3s_albedo_points()
+                if ('LAI' in self.config['var']) or ('fAPAR' in self.config['var']):
+                    prod_chunk = self._get_c3s_lai_fapar_points()
+                else:
+                    prod_chunk = self._get_c3s_albedo_points()
 
 
         return prod_chunk
