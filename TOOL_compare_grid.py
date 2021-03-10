@@ -146,7 +146,8 @@ class Main:
 
         ## Get the indices of the box around a point
         #pt = 'DOM1'
-        pt = 'FRENCHMAN_FLAT'
+        #pt = 'FRENCHMAN_FLAT'
+        pt = 'Republica_Saja_8'
 
         print(self.coor_avhrr.get_row_by_name(pt))
         print(self.coor_vgt.get_row_by_name(pt))
@@ -206,7 +207,7 @@ if __name__=='__main__':
     
     #m.extract_land_mask(**kwargs) # input args: f1=<path>
     
-    m.plot_extract_coor(**kwargs)
+    m.plot_extract_coor(**kwargs) # input args:  csvcoorfile, f1, f2
     m.show()
 
 

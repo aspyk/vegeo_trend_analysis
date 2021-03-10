@@ -105,10 +105,11 @@ class CoordinatesConverter():
     as Splitter class in order to be used independantly.
     """
 
-    def __init__(self, fpath, sensor, sub=None):
+    def __init__(self, fpath, sensor, origin='topleft', sub=None):
         self.fpath = fpath
         self.sensor = sensor
         self.input = 'points'
+        self.origin = origin
         # return itself in a list to match Splitter format
         self.list = [self]
 
@@ -160,14 +161,22 @@ class CoordinatesConverter():
         
         df = df.sort_values(by=['ilat', 'ilon'])
     
-        ## Make a bounding box around the coordinate
-        half_size = int(self.box_size/2.)
-        if (self.box_size%2)==0: 
-            #self.slice = [(0, lat, lon) for lat,lon in df[['ilat', 'ilon']].values]
-            self.slice = [(0, slice(ilat-half_size, ilat+half_size), slice(ilon-half_size, ilon+half_size)) for ilat,ilon in df[['ilat', 'ilon']].values]
-        else:
-            #self.slice = [(0, slice(lat-self.box_offset, lat+self.box_offset), slice(lon-self.box_offset, lon+self.box_offset)) for lat,lon in df[['ilat', 'ilon']].values]
-            self.slice = [(0, slice(ilat-half_size, ilat+half_size+1), slice(ilon-half_size, ilon+half_size+1)) for ilat,ilon in df[['ilat', 'ilon']].values]
+        if self.origin=='center':
+            ## Make a bounding box around the coordinate
+            half_size = int(self.box_size/2.)
+            if (self.box_size%2)==0: 
+                self.slice = [(0,
+                               slice(ilat-half_size, ilat+half_size),
+                               slice(ilon-half_size, ilon+half_size)) for ilat,ilon in df[['ilat', 'ilon']].values]
+            else:
+                self.slice = [(0,
+                               slice(ilat-half_size, ilat+half_size+1),
+                               slice(ilon-half_size, ilon+half_size+1)) for ilat,ilon in df[['ilat', 'ilon']].values]
+        elif self.origin=='topleft':
+                size = self.box_size
+                self.slice = [(0,
+                               slice(ilat, ilat+size),
+                               slice(ilon, ilon+size)) for ilat,ilon in df[['ilat', 'ilon']].values]
         
         self.site_coor = df
         
