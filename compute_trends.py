@@ -144,6 +144,9 @@ def pandas_wrapper(data_test0, pt_names, globid, b_deb):
     Pandas wrapper that vectorize stat processing
     """
 
+    b_deb = 0
+    b_plot = 0
+
     import matplotlib.pyplot as plt
     def save_heatmap(A, suffix):
         print("Plot heat map...")
@@ -160,7 +163,7 @@ def pandas_wrapper(data_test0, pt_names, globid, b_deb):
     if b_deb: print(pt_names)
 
     df = pd.DataFrame(data_test0, columns=pt_names, index=[globid//36, globid%36])
-    if b_deb: save_heatmap(df.values.T, "before")
+    if b_plot: save_heatmap(df.values.T, "before")
     df2 = df.unstack()
     if b_deb: print(df2)
     
@@ -192,7 +195,7 @@ def pandas_wrapper(data_test0, pt_names, globid, b_deb):
     df_res = df_zman.stack(dropna=False)
     df_res = df_res.loc[df_res.first_valid_index():df_res.last_valid_index()]
     if b_deb: print(df_res)
-    if b_deb: save_heatmap(df_res.values.T, "after")
+    if b_plot: save_heatmap(df_res.values.T, "after")
 
     ### Test and apply MKtest on zscaled data (we just want p-value here)
     
@@ -221,14 +224,15 @@ def pandas_wrapper(data_test0, pt_names, globid, b_deb):
     
     p_test = df_mk['p'] < 0.05
     if b_deb: print(p_test)
-    df_final = df.apply(proc)
-    df_final = pd.DataFrame.from_items(zip(df_final.index, df_final.values)).T
-    df_final.columns = ['p','z','sn','nx']
-    if b_deb: print(df_final)
+    df_phy = df.apply(proc)
+    df_phy = pd.DataFrame.from_items(zip(df_phy.index, df_phy.values)).T
+    df_phy.columns = ['p','z','sn','nx']
+    if b_deb: print(df_phy)
 
-    #sys.exit()
+    ### return [p_z, z_z, sn_phy, nx_z]
+    df_mk['sn'] = df_phy['sn']
 
-    return df_final.values
+    return df_mk.values
 
 
 def legacy_wrapper(data_test0, subchunk, b_deb):
