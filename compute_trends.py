@@ -160,7 +160,7 @@ def pandas_wrapper(data_test0, pt_names, globid, b_deb):
     if b_deb: print(pt_names)
 
     df = pd.DataFrame(data_test0, columns=pt_names, index=[globid//36, globid%36])
-    save_heatmap(df.values.T, "before")
+    if b_deb: save_heatmap(df.values.T, "before")
     df2 = df.unstack()
     if b_deb: print(df2)
     
@@ -192,14 +192,14 @@ def pandas_wrapper(data_test0, pt_names, globid, b_deb):
     df_res = df_zman.stack(dropna=False)
     df_res = df_res.loc[df_res.first_valid_index():df_res.last_valid_index()]
     if b_deb: print(df_res)
-    save_heatmap(df_res.values.T, "after")
+    if b_deb: save_heatmap(df_res.values.T, "after")
 
     ### Test and apply MKtest on zscaled data (we just want p-value here)
     
     def preproc(y):
         # Second 70% threshold: compute MK test only if 70% of valid data
         if (np.count_nonzero(np.isnan(y))/len(y))>0.3:
-            print("WARNING: More than 30%  of NaN")
+            if b_deb: print("WARNING: More than 30%  of NaN")
             return tuple([np.nan]*4)
         return m.mk_trend(len(y), np.arange(len(y)), y)
     
@@ -215,16 +215,16 @@ def pandas_wrapper(data_test0, pt_names, globid, b_deb):
     def proc(y):
         #print(p_test[y.name])
         if not p_test[y.name]:
-            print("INFO: p-value > 0.05 for {}".format(y.name))
+            if b_deb: print("INFO: p-value > 0.05 for {}".format(y.name))
             return tuple([np.nan]*4)
         return m.mk_trend(len(y), np.arange(len(y)), y)
     
     p_test = df_mk['p'] < 0.05
-    print(p_test)
+    if b_deb: print(p_test)
     df_final = df.apply(proc)
     df_final = pd.DataFrame.from_items(zip(df_final.index, df_final.values)).T
     df_final.columns = ['p','z','sn','nx']
-    print(df_final)
+    if b_deb: print(df_final)
 
     #sys.exit()
 
