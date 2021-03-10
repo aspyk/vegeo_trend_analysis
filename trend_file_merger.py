@@ -301,16 +301,18 @@ def plot_trends_scatter(product, chunks, plot_name, config):
         trends['len'] =  hf[invar+'/len'][:].ravel()
         trends['sn']  =  hf[invar+'/slope'][:].ravel() * 36
 
-        sn_max = np.abs(trends['sn']).max()
-        zval_max = np.abs(trends['zval']).max()
-        pval_max = np.abs(trends['pval']).max()
+        sn_max = np.abs(np.nanmax(trends['sn']))
+        zval_max = np.abs(np.nanmax(trends['zval']))
+        pval_max = np.abs(np.nanmax(trends['pval']))
+        len_max = np.abs(np.nanmax(trends['len']))
+        len_min = np.abs(np.nanmin(trends['len']))
 
         plot_param = {}
-        plot_param['len'] = {'vmin':0, 'vmax':trends['len'].max(), 'cmap':'jet'}
+        plot_param['len'] = {'vmin':len_min, 'vmax':len_max, 'cmap':'jet'}
         plot_param['sn'] = {'vmin':-sn_max, 'vmax':sn_max, 'cmap':'seismic'}
         plot_param['zval'] = {'vmin':-zval_max, 'vmax':zval_max, 'cmap':'seismic'}
-        #plot_param['pval'] = {'vmin':-pval_max, 'vmax':pval_max, 'cmap':'seismic'}
-        plot_param['pval'] = {'cmap':'jet'}
+        plot_param['pval'] = {'vmin':0, 'vmax':0.05, 'cmap':'jet'}
+        #plot_param['pval'] = {'cmap':'jet'}
 
         ## Choose variable to plot
         pvar = 'pval' 
@@ -347,9 +349,12 @@ def plot_trends_scatter(product, chunks, plot_name, config):
                 cm = 'seismic'
                 #pts = (0.5*chunks.site_coor[['ilat', 'ilon']].values.T).astype(np.int32)
                 #print(pts.shape)
-                #scat = ax.scatter(pts[1], pts[0], c=trends['sn'], vmin=vn, vmax=vx, cmap=cm)
-                #sc = ax.scatter(chunks.site_coor.LONGITUDE, chunks.site_coor.LATITUDE, c=trends[pvar], vmin=vn, vmax=vx, cmap=cm)
-                sc = ax.scatter(chunks.site_coor.LONGITUDE, chunks.site_coor.LATITUDE, c=trends[rvar], **plot_param[rvar])
+                if rvar=='pval':
+                    pcol = np.where(trends[rvar]>0.05,1.,0.)
+                    pcol[np.isnan(trends[rvar])] = np.nan
+                    sc = ax.scatter(chunks.site_coor.LONGITUDE, chunks.site_coor.LATITUDE, c=pcol, **plot_param[rvar])
+                else:
+                    sc = ax.scatter(chunks.site_coor.LONGITUDE, chunks.site_coor.LATITUDE, c=trends[rvar], **plot_param[rvar])
                 
                 # create an axes on the right side of ax. The width of cax will be 5%
                 # of ax and the padding between cax and ax will be fixed at 0.05 inch.
