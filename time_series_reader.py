@@ -737,7 +737,7 @@ class TimeSeriesExtractor():
             for name, data in data_ts.items():
                 out_var.append({'type':np.float, 'name':'vars/'+name, 'data':data})
             out_var.append({'type':np.int64, 'name':'meta/ts_dates', 'data':time_ts})
-            out_var.append({'type':'S2', 'name':'meta/point_names', 'data':np.array(chunk.site_coor['NAME'])})
+            out_var.append({'type':'S', 'name':'meta/point_names', 'data':np.array(chunk.site_coor['NAME'])})
             out_var.append({'type':np.uint16, 'name':'meta/global_id', 'data':self.df_full['global_id'].values})
             self._write_ts_chunk(out_var)
             write_files.append(self.write_file)

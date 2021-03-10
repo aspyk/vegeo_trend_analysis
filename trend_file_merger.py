@@ -154,12 +154,7 @@ def plot_trends(product, chunks, plot_name, plot_choice, config):
     from mpl_toolkits.axes_grid1 import make_axes_locatable
     from matplotlib.transforms import Bbox
     
-    if chunks.input=='box':
-        input_trend_file = pathlib.Path(config['output_path']['trend']) / product.name / (product.hash+'_'+config['output_path']['merged_filename'])
-    elif chunks.input=='points':
-        list_of_paths = (pathlib.Path(config['output_path']['trend']) / product.name).glob('*')
-        latest_path = max(list_of_paths, key=lambda p: p.stat().st_ctime)
-        input_trend_file = latest_path
+    input_trend_file = pathlib.Path(config['output_path']['trend']) / product.name / (product.hash+'_'+config['output_path']['merged_filename'])
     #input_trend_file = 'output_trend/c3s_al_bbdh_AVHRR/2bfc9d_CHUNK0_SUBCHUNK0_0_726_0_1.nc' # DEBUG: harcoded file name
     case_name = "{}_{}_{}".format(product.shorten.upper(),
                                   product.start_date.strftime('%Y%m%d'),
@@ -169,145 +164,6 @@ def plot_trends(product, chunks, plot_name, plot_choice, config):
     output_path.mkdir(parents=True, exist_ok=True)
     
     print('INFO: Read {}'.format(input_trend_file))
-
-    ## If input are points, show a world map with scatter plot
-    if chunks.input=='points':
-        ## Read results stats
-        hf = h5py.File(input_trend_file, 'r')
-        
-        for invar in hf.keys():
-            print('---', invar)
-            res_vars = ['pval', 'zval', 'len', 'sn']
-
-            trends = {}
-            trends['pval'] = hf[invar+'/pval'][:].ravel()
-            trends['zval'] = hf[invar+'/zval'][:].ravel()
-            trends['len'] =  hf[invar+'/len'][:].ravel()
-            trends['sn']  =  hf[invar+'/slope'][:].ravel() * 365
-
-            sn_max = np.abs(trends['sn']).max()
-            zval_max = np.abs(trends['zval']).max()
-            pval_max = np.abs(trends['pval']).max()
-
-            plot_param = {}
-            plot_param['len'] = {'vmin':0, 'vmax':trends['len'].max(), 'cmap':'jet'}
-            plot_param['sn'] = {'vmin':-sn_max, 'vmax':sn_max, 'cmap':'seismic'}
-            plot_param['zval'] = {'vmin':-zval_max, 'vmax':zval_max, 'cmap':'seismic'}
-            #plot_param['pval'] = {'vmin':-pval_max, 'vmax':pval_max, 'cmap':'seismic'}
-            plot_param['pval'] = {'cmap':'jet'}
-
-            ## Choose variable to plot
-            pvar = 'pval' 
-            
-            fig, axs = plt.subplots(2,2, figsize=(18, 10))
-            axs = axs.ravel()
-            
-            ptype = 2
-
-            ## Add land mask
-            if 1:
-                with h5py.File('c3s_land_mask.h5', 'r') as h:
-                    lon = h['lon'][:]
-                    lat = h['lat'][:]
-                    mask = h['mask'][0,:,:]
-
-                dlon = (lon[1]-lon[0])/2.
-                dlat = (lat[1]-lat[0])/2.
-                #extent = [lon[0]-dlon, lon[-1]+dlon, lat[0]-dlat, lat[-1]+dlat]
-                extent = [lon[0]-dlon, lon[-1]+dlon, lat[-1]+dlat, lat[0]-dlat]
-
-                #print('extent=', extent)
-
-                cm = 'jet'
-                cm = 'gist_ncar'
-                #mat = ax.imshow(data[0,::2,::2], cmap=cm)
-                #print(mask.shape)
-                for ax in axs:
-                    mat = ax.imshow(mask, extent=extent, cmap='terrain')
-            
-            # Add landval sites with scatter
-            for ax,rvar in zip(axs,res_vars):
-                if ptype==2:
-                    cm = 'seismic'
-                    #pts = (0.5*chunks.site_coor[['ilat', 'ilon']].values.T).astype(np.int32)
-                    #print(pts.shape)
-                    #scat = ax.scatter(pts[1], pts[0], c=trends['sn'], vmin=vn, vmax=vx, cmap=cm)
-                    #sc = ax.scatter(chunks.site_coor.LONGITUDE, chunks.site_coor.LATITUDE, c=trends[pvar], vmin=vn, vmax=vx, cmap=cm)
-                    sc = ax.scatter(chunks.site_coor.LONGITUDE, chunks.site_coor.LATITUDE, c=trends[rvar], **plot_param[rvar])
-                    
-                    # create an axes on the right side of ax. The width of cax will be 5%
-                    # of ax and the padding between cax and ax will be fixed at 0.05 inch.
-                    divider = make_axes_locatable(ax)
-                    cax = divider.append_axes("right", size="5%", pad=0.05)
-                    plt.colorbar(sc, cax=cax) 
-                
-                ax.set_aspect('equal')
-                
-                ## Enable dynamic annotation on point hovering
-                if 0:
-                    annot = ax.annotate("", xy=(0,0), xytext=(20,20),textcoords="offset points",
-                                        bbox=dict(boxstyle="round", fc="w"),
-                                        arrowprops=dict(arrowstyle="->"))
-                    annot.set_visible(False)
-                    
-                    def update_annot(ind):
-                    
-                        pos = sc.get_offsets()[ind["ind"][0]]
-                        annot.xy = pos
-                        #text = "{}, {}".format(" ".join(list(map(str,ind["ind"]))), 
-                        #                       " ".join([chunks.site_coor.NAME.values[n] for n in ind["ind"]]))
-                        text = "{}, {}".format(" ".join([chunks.site_coor.NAME.values[n] for n in ind["ind"]]),
-                                               " ".join([str(trends[pvar][n]) for n in ind["ind"]]))
-                        annot.set_text(text)
-                        #annot.get_bbox_patch().set_facecolor(cmap(norm(c[ind["ind"][0]])))
-                        annot.get_bbox_patch().set_alpha(0.4)
-                    
-                    
-                    def hover(event):
-                        vis = annot.get_visible()
-                        if event.inaxes == ax:
-                            cont, ind = sc.contains(event)
-                            if cont:
-                                update_annot(ind)
-                                annot.set_visible(True)
-                                fig.canvas.draw_idle()
-                            else:
-                                if vis:
-                                    annot.set_visible(False)
-                                    fig.canvas.draw_idle()
-                   
-                    fig.canvas.mpl_connect("motion_notify_event", hover)
-
-                ax.set_title("{} | {} | {} to {} | {}".format(product.shorten.replace('_','-').upper(),
-                                                              invar, 
-                                                              product.start_date.strftime('%Y-%m-%d'),
-                                                              product.end_date.strftime('%Y-%m-%d'),
-                                                              rvar) )
-            
-            ## Export sublplots together
-            img_path = output_path/'{}_{}.png'.format(case_name, invar)
-            fig.savefig(str(img_path))
-            print('Image saved to:', str(img_path))
-            
-            ## Export sublplots separately 
-            for ax,rvar in zip(axs,res_vars):
-                extent = ax.get_tightbbox(fig.canvas.renderer).transformed(fig.dpi_scale_trans.inverted())
-                img_path = output_path/'{}_{}_{}.png'.format(case_name, invar, rvar)
-                fig.savefig(str(img_path), bbox_inches=extent)
-                print('Image saved to:', str(img_path))
-
-            ## Export results as csv
-            for rvar in res_vars:
-                chunks.site_coor[invar+'_'+rvar] = trends[rvar]
-        
-        csv_path = output_path/'{}.csv'.format(case_name)
-        chunks.site_coor.to_csv(csv_path, sep=';')
-        print('CSV results saved to:', str(csv_path))
-
-        hf.close()
-
-        return
-
 
     # Shortcut to [ylim1:ylim2,xlim1:xlim2]
     zone_bnd = chunks.get_limits('global', 'slice') 
@@ -443,7 +299,7 @@ def plot_trends_scatter(product, chunks, plot_name, config):
         trends['pval'] = hf[invar+'/pval'][:].ravel()
         trends['zval'] = hf[invar+'/zval'][:].ravel()
         trends['len'] =  hf[invar+'/len'][:].ravel()
-        trends['sn']  =  hf[invar+'/slope'][:].ravel() * 365
+        trends['sn']  =  hf[invar+'/slope'][:].ravel() * 36
 
         sn_max = np.abs(trends['sn']).max()
         zval_max = np.abs(trends['zval']).max()
