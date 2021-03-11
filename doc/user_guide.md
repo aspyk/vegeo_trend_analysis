@@ -12,7 +12,7 @@ title: C3S Quality Monitoring Tool
 The objective of the tool is to compute albedo, LAI and FAPAR trends based on Mann Kendall test on copernicus v2 data. This tool will used about every 6 months in order to update the trend.
 
 
-## Overview of the core pipeline
+## Overview of the pipeline
 The structure of the tool is composed of a main core pipeline running on a single product, this pipeline looping then on a list of desired products products.
 
 ### Inputs
@@ -43,43 +43,9 @@ Reference sites are ~700 points located all over the world. This input is given 
   <figcaption>All the reference sites on the C3S land mask.</figcaption>
 </figure>
 
+
 #### YAML config file
-Path and options are given in a config file using the YAML format.
 
-### Outputs
-Outputs of the code are of three types:
-- cache files
-
-These files are written between each modules in order to save previous work for being unnecessarily reprocessed, especially for the extract part that can take some time. Cache files have HDF5 format and can be easily read outside of the code if required. Detailed description is given in the module section.
-
-- PNG images
-
-PNG images are written at the end of the last module to plot the result of the trend computation. The format use a scatter plot on a global map with point colored by the value of the slope computed by the Theil-Sen estimator.
-
-<figure style="text-align:center">
-  <img src="./img/output_image_example.png" alt="output_image_example.png"/>
-  <figcaption>Output example where trends in [unit/year] of AL_DH_VI channel over about 20 years is displayed.</figcaption>
-</figure>
-
-- CSV files
-
-CSV files are written at the same time as the PNG files and simply export numerical values use to plot the scatter plot as plain text to be used for further analysis if necessary. The format is the same as for the CSV input file containing the LANDVAL sites, new columns are just added to give the statistical parameters computed previously.
-
-### Core pipeline
-The core pipeline is made up of 4 modules communicating together only using cache files. These modules are the reading module, the merging module, the trend module and the plotting module. The following section is dedicated to their detailed description. 
-
-A flowchart summarizing the whole structure is given below:
-
-<figure style="text-align:center">
-  <img src="./img/input_output_overview.png" alt="input_output_overview.png"/>
-  <figcaption>Flowchart of all the modules with their inputs and outputs.</figcaption>
-</figure>
-
-## Description of the modules
-
-TODO
-
-### Config file
 Config file use the [YAML format](https://yaml.org/). The file is divided into several parts. The first one give parameters about C3S data files, that is mainly their path (under the `root` keyword) and the variables to be analyzed (under the `vars` keyword). Others parameters (`source`, `mode`, `freq`) should not be modified in the scope of the actual C3S global datasets available. Note the use of anchors with `<<: &foo` and `<<: *foo` to avoid repeating the same parameters for several datasets. 
 
 Below is an extract of this part for the AL_BB_DH datasets grouping the 4 sensors:
@@ -136,6 +102,43 @@ ref_site_coor:
 
 ```
 `output_path` section group the folders where cache files and output images and CSV should be written. Each module should always writes its outputs in separate folders to avoid unexpected conflicts.
+
+### Outputs
+Outputs of the code are of three types:
+- cache files
+
+These files are written between each modules in order to save previous work for being unnecessarily reprocessed, especially for the extract part that can take some time. Cache files have HDF5 format and can be easily read outside of the code if required. Detailed description is given in the module section.
+
+- PNG images
+
+PNG images are written at the end of the last module to plot the result of the trend computation. The format use a scatter plot on a global map with point colored by the value of the slope computed by the Theil-Sen estimator.
+
+<figure style="text-align:center">
+  <img src="./img/output_image_example.png" alt="output_image_example.png"/>
+  <figcaption>Output example where trends in [unit/year] of AL_DH_VI channel over about 20 years is displayed.</figcaption>
+</figure>
+
+- CSV files
+
+CSV files are written at the same time as the PNG files and simply export numerical values use to plot the scatter plot as plain text to be used for further analysis if necessary. The format is the same as for the CSV input file containing the LANDVAL sites, new columns are just added to give the statistical parameters computed previously.
+
+### Core pipeline
+The core pipeline is made up of 4 modules communicating together only using cache files. These modules are as follow:
+- reading module
+- merging module
+- trend module
+- plotting module
+
+The following section is dedicated to their detailed description. A flowchart summarizing the whole structure is given below:
+
+<figure style="text-align:center">
+  <img src="./img/input_output_overview.png" alt="input_output_overview.png"/>
+  <figcaption>Flowchart of all the modules with their inputs and outputs.</figcaption>
+</figure>
+
+## Description of the modules
+
+> **_TODO_** : add
 
 ### Reading module
 One-dimensional time series are required for the Mann-Kendall test but inputs are using several formats and resolution (GPS coordinates for LANDAVAL sites and 4KM, 1KM and 300M resolutions for C3S datasets). Then to be able to use the whole time series for statistics computation a first aggregating pre-processing step is required to get uniform data. For that the reading module can be divided in two part: first the extraction part, then the aggregation part.
@@ -200,18 +203,41 @@ To get directly the 4x4 matrix:
 
 Then, all of these matrices are aggregated in the `_get_c3s_albedo_points` method of the `TimeSeriesExtractor` class in the `time_series_reader.py` file.
 
-The shape of the output of this extraction will be as said above a `(number_of_time_slot, number_of_sites)` array.
+The dimension of the output of this extraction will be as said above a `(number_of_time_slot, number_of_sites)` array.
 
 #### Output format
-Note that this code was intended to work not only on coordinates list but also on 2D areas. Therefore, to allow the use of the same processing routines for both cases, arrays used for the present points extraction will always have 
+Note that this code was intended to work not only on coordinates list but also on 2D areas. Therefore, to allow the use of the same processing routines for both cases, arrays used for the present points extraction will often have an extra dimension to fit a generic 2D pattern.
 
+> **_TODO_** : describe the meta variables
+
+
+```
+timeseries_xxxxxx_xxxxxx.h5.h5
+ ┣ meta
+ ┃ ┣ global_id     Dataset {<time_slot_nb>}
+ ┃ ┣ point_names   Dataset {<site_nb>}
+ ┃ ┗ ts_dates      Dataset {<time_slot_nb>}
+ ┗ vars
+    ┣ var_1         Dataset {<time_slot_nb>, 1, <site_nb>} 
+    ┣ [...]         Dataset {<time_slot_nb>, 1, <site_nb>}
+    ┗ var_n         Dataset {<time_slot_nb>, 1, <site_nb>}
+```
 ### Merging module
+
+#### Implementation
+#### Output format
 
 ### Trend module
 
+#### Implementation
+#### Output format
+
 ### Plotting module
 
-### Summary of the code structure
+#### Implementation
+#### Output format
+
+### Summary of the module structure
 
 <figure style="text-align:center">
   <img src="./img/pipeline_overview.png" alt="pipeline_overview.png"/>
@@ -225,7 +251,24 @@ Note that this code was intended to work not only on coordinates list but also o
 
 ## Usage
 
-### Manual
+### Setup
+
+#### Clone and fortran compilation
+```properties
+### TO BE MODIFIED AFTER MERGING, SHOULD POINT TO A TAGGED VERSION
+git clone --single-branch --branch feature/genericreader https://github.com/aspyk/vegeo_trend_analysis
+cd vegeo_trend_analysis/
+./run_setup.sh
+```
+
+#### Tests
+```properties
+pytest test.py -k "AVHRR_plot_all"
+pytest test.py -k "S3_extract_all"
+```
+
+
+### Manual run
 A manual run is a run where specific time range, sensor and product are given by the user in a command line.
 ```
 python main.py -t0 <start_date> -t1 <end_date> -i <type_of_input> -p <product_tag> -a <action> --config <config_file_path> [-d] [--debug 1]
@@ -246,7 +289,7 @@ python main.py -t0 1981-01-01 -t1 2020-12-31 -i latloncsv:config -p c3s_al_bbdh_
 
 
 
-### Automatic
+### Automatic run
 The automatic run can be launch with a single short command. The run will loop over:
 - the whole available time range, that is from 1981 to the date of the run.
 - AVHRR, VGT, PROBAV and SENTINEL3 sensors.
