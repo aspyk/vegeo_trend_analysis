@@ -4,11 +4,29 @@
 import datetime
 import os,sys
 from contextlib import redirect_stdout,redirect_stderr
-
+import argparse
 
 from main import Main
 
-m = Main()
+parser = argparse.ArgumentParser(description='', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser.add_argument('-r','--redirect_output', help='Redirect stdout and stderr to file.', action='store_true')
+param = parser.parse_args()
+
+def run_pipeline(args, output_to='screen'):
+    m = Main()
+    if output_to=='file':
+         with open('out.txt', 'w', buffering=1) as fout:
+            with redirect_stdout(fout):
+                with open('err.txt', 'w', buffering=1) as ferr:
+                    with redirect_stderr(ferr):
+                        print("python main.py "+args)
+                        m.preprocess(args.split())
+                        m.process()
+    elif output_to=='screen':
+        print("python main.py "+args)
+        m.preprocess(args.split())
+        m.process()
+
 
 #c3s_vars = ['al_bbdh','al_bbbh','al_spdh','al_spbh','lai','fapar']
 c3s_vars = ['al_bbdh']
@@ -28,12 +46,10 @@ for v in c3s_vars:
 
     args = "-t0 1981-01-01 -t1 2020-12-31 -i latloncsv:config -p c3s_al_bbdh_AVHRR c3s_al_bbdh_VGT c3s_al_bbdh_PROBAV -a extract merge trend plot --config config_vito.yml"
 
-    args = args.split()
 
-    with open('out.txt', 'w', buffering=1) as fout:
-        with redirect_stdout(fout):
-            with open('err.txt', 'w', buffering=1) as ferr:
-                with redirect_stderr(ferr):
-                    m.preprocess(args)
-                    m.process()
+    if param.redirect_output:
+        dest = 'file'
+    else:
+        dest = 'screen'
 
+    run_pipeline(args, output_to=dest)

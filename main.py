@@ -232,14 +232,12 @@ class Main():
         if 'trend' in self.args.action:
             print_section('Compute trends')
     
-            #import estimate_trends_from_time_series
             import compute_trends
     
             for prod in self.products:
                 print('  Process {0}'.format(prod.name))
                 
                 list_args = [prod, self.chunks, self.args.nproc, self.args.delete_cache, self.yfile]
-                #estimate_trends_from_time_series.compute_trends(*list_args)
                 compute_trends.main(*list_args)
     
         #------------------------------------------------#
