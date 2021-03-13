@@ -2,14 +2,30 @@ from timeit import default_timer as timer
 import sys
 
 class SimpleTimer():
+    """
+    Usage
+    -----
+    from tools import SimpleTimer
+    ti = SimpleTimer()  # initialize the timer and start counting
+        [..some code..]
+    ti('label1')        # print the time difference since the last call (here the init)
+        [..some code..]
+    ti('label2')        # print the time difference since the last call
+        [..some code..]
+    ti()                # reset the counter without printing anything 
+        [..some code..]
+    ti('label3')        # print the time difference since the last call
+    ti.show()           # print all the previous timing (they are recorded automatically)
+    """
     def __init__(self):
         self.t0 = timer()
         self.res = []
 
-    def __call__(self, msg=''):
-        dt = timer()-self.t0
-        self.res.append([msg, dt])
-        print(msg, dt)
+    def __call__(self, msg=None):
+        if msg is not None:
+            dt = timer()-self.t0
+            self.res.append([msg, dt])
+            print(msg, dt)
         self.t0 = timer()
 
     def show(self):
