@@ -144,6 +144,9 @@ def pandas_wrapper(data_test0, pt_names, globid, b_deb):
     Pandas wrapper that vectorize stat processing
     """
 
+    from tools import SimpleTimer
+    ti = SimpleTimer()  
+
     b_deb = 0
     b_plot = 0
 
@@ -169,21 +172,30 @@ def pandas_wrapper(data_test0, pt_names, globid, b_deb):
     
     ### Check that for each dekad, there is at least 70% of non-NaN observations. 
     
-    dekad_valid_filter = df2.apply(lambda x: (np.count_nonzero(~np.isnan(x))/df2.shape[0])>0.7)
-    #print("dekad_valid_filter=", dekad_valid_filter)
+    ti()
+    #valid_dekad = df2.apply(lambda x: (np.count_nonzero(~np.isnan(x))/df2.shape[0])>0.7)
+    valid_dekad = ((~np.isnan(df2.values)).sum(axis=0)/df2.shape[0])>0.7
+    ti('t01:apply_0.7filter')        
+    #print("valid_dekad=", valid_dekad)
     # Number of valid dekad:
-    if b_deb: print("dekad_valid_filter.shape=", dekad_valid_filter.shape)
-    dekad_len = df2.shape[0]
-    n_dekad = df2.shape[1]
-    valid = np.count_nonzero(df2.apply(lambda x: (np.count_nonzero(~np.isnan(x))/dekad_len)>0.7).values.ravel())
-    if b_deb: print("valid,n_dekad=", valid,n_dekad )
-    if b_deb: print("% of dekad discarded:", 100*(1-valid/n_dekad)) 
+    if b_deb:
+        print("valid_dekad.shape=", valid_dekad.shape)
+        dekad_len = df2.shape[0]
+        n_dekad = df2.shape[1]
+        valid = np.count_nonzero(df2.apply(lambda x: (np.count_nonzero(~np.isnan(x))/dekad_len)>0.7).values.ravel())
+        print("valid,n_dekad=", valid,n_dekad )
+        print("% of dekad discarded:", 100*(1-valid/n_dekad)) 
 
-    ### Set dekak for NaN everywhere the 70% threshold is not valid
-    
-    for col,valid  in enumerate(dekad_valid_filter):
-        if not valid:
-            df2.iloc[:,col] = np.nan
+
+    ### Set the dekad full of NaN if the 70% threshold is not valid
+   
+    ti()
+    idv = np.arange(len(valid_dekad))[~valid_dekad] # Get indices of valid columns
+    npdf2 = df2.values
+    npdf2[:,idv] = np.nan # using numpy is really faster than doing the same in pandas
+    df2 = pd.DataFrame(npdf2, columns=df2.columns, index=df2.index) # copy the original df2
+
+    ti('t2:set_nan')        
     
     ### Commpute z-score
     
@@ -206,7 +218,9 @@ def pandas_wrapper(data_test0, pt_names, globid, b_deb):
             return tuple([np.nan]*4)
         return m.mk_trend(len(y), np.arange(len(y)), y)
     
+    ti()
     df_mk = df_res.apply(preproc)
+    ti('t32:apply_mk1')        
     #print(df_mk) # df_mk is a Series, not a DataFrame 
     df_mk = pd.DataFrame.from_items(zip(df_mk.index, df_mk.values)).T
     df_mk.columns = ['p','z','sn','nx']
@@ -224,13 +238,17 @@ def pandas_wrapper(data_test0, pt_names, globid, b_deb):
     
     p_test = df_mk['p'] < 0.05
     if b_deb: print(p_test)
+    ti()
     df_phy = df.apply(proc)
+    ti('t42:apply_mk2')        
     df_phy = pd.DataFrame.from_items(zip(df_phy.index, df_phy.values)).T
     df_phy.columns = ['p','z','sn','nx']
     if b_deb: print(df_phy)
 
     ### return [p_z, z_z, sn_phy, nx_z]
     df_mk['sn'] = df_phy['sn']
+
+    ti.show()
 
     return df_mk.values
 
