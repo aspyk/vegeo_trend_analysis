@@ -216,7 +216,7 @@ def pandas_wrapper(data_test0, pt_names, globid, b_deb):
         if (np.count_nonzero(np.isnan(y))/len(y))>0.3:
             if b_deb: print("WARNING: More than 30%  of NaN")
             return tuple([np.nan]*4)
-        return m.mk_trend(len(y), np.arange(len(y)), y)
+        return m.mk_trend(len(y), np.arange(len(y)), y, 1)
     
     ti()
     df_mk = df_res.apply(preproc)
@@ -234,7 +234,7 @@ def pandas_wrapper(data_test0, pt_names, globid, b_deb):
         if not p_test[y.name]:
             if b_deb: print("INFO: p-value > 0.05 for {}".format(y.name))
             return tuple([np.nan]*4)
-        return m.mk_trend(len(y), np.arange(len(y)), y)
+        return m.mk_trend(len(y), np.arange(len(y)), y, 2)
     
     p_test = df_mk['p'] < 0.05
     if b_deb: print(p_test)

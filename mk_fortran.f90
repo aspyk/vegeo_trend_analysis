@@ -3,7 +3,10 @@
   ! --------------------------------------------------------------------
 Module mk_trend 
   contains 
-  SUBROUTINE mk_test(ndat,dat,ts,p,z,Sn,nx)
+  SUBROUTINE mk_test(ndat,dat,ts,mode,p,z,Sn,nx)
+    ! mode=1 : compute only p (and z)
+    ! mode=2 : compute only sn
+    ! mode=3 : compute p (and z) and sn
     IMPLICIT NONE
     
     INTEGER, INTENT(IN) :: ndat
@@ -17,7 +20,9 @@ Module mk_trend
     REAL*4, ALLOCATABLE, DIMENSION(:) :: s_array
     REAL*8                    :: s, tp
     REAL*8                    :: var_s
+    !REAL*4 :: t0,t1,r1,r2 ! var for time profiling
 
+    INTEGER*4, INTENT(IN)  :: mode
     LOGICAL    :: debug
 
     ! allocate variables
@@ -39,81 +44,98 @@ Module mk_trend
       ENDIF
     ENDDO
     
-    ! # calculate S 
-    !if (debug) write(*,*) 'calculate s...'
-    s = 0
-    DO k = 1,nx-1
-      DO j = k,nx
-        IF (x(j) .NE. x(k)) s = s+SIGN(1.,x(j)-x(k))
-      ENDDO
-    ENDDO
-    
-    ! # calculate the unique data
-    !if (debug) write(*,*) 'calculate unique data...'
-    g = 1
-    unique_x(1) = x(1)
-    DO i = 2,nx
-      DO j = 1,g
-        IF (x(i) .EQ. unique_x(j)) EXIT
-      ENDDO
-      IF (j .LE. g) CYCLE
-      g = g+1
-      unique_x(g) = x(i)
-    ENDDO
-    
-    ! # calculate the var(s)
-    !if (debug) write(*,*) 'calculate the var...'
-    !write(*,*) g , nx
-    IF (g .EQ. nx) THEN
-      var_s = REAL(nx*(nx-1)*(2*nx+5), 8)/18.
-    ELSE
-      var_s = 0.
-      DO i = 1,g
-        tp = 0.
-        DO j = 1,nx
-          IF (unique_x(i) .EQ. x(j)) tp = tp+1.
+    IF ((mode.eq.1).or.(mode.eq.3)) THEN
+        ! # calculate S 
+        !if (debug) write(*,*) 'calculate s...'
+        s = 0
+        DO k = 1,nx-1
+          DO j = k,nx
+            IF (x(j) .NE. x(k)) s = s+SIGN(1.,x(j)-x(k))
+          ENDDO
         ENDDO
-        var_s = var_s+(tp*(tp-1)*(2*tp+5))
-      ENDDO
-      var_s = (REAL(nx*(nx-1)*(2*nx+5), 8)-var_s)/18.
-    ENDIF
+        
+        ! # calculate the unique data
+        !if (debug) write(*,*) 'calculate unique data...'
+        g = 1
+        unique_x(1) = x(1)
+        DO i = 2,nx
+          DO j = 1,g
+            IF (x(i) .EQ. unique_x(j)) EXIT
+          ENDDO
+          IF (j .LE. g) CYCLE
+          g = g+1
+          unique_x(g) = x(i)
+        ENDDO
+        
+        ! # calculate the var(s)
+        !if (debug) write(*,*) 'calculate the var...'
+        !write(*,*) g , nx
+        IF (g .EQ. nx) THEN
+          var_s = REAL(nx*(nx-1)*(2*nx+5), 8)/18.
+        ELSE
+          var_s = 0.
+          DO i = 1,g
+            tp = 0.
+            DO j = 1,nx
+              IF (unique_x(i) .EQ. x(j)) tp = tp+1.
+            ENDDO
+            var_s = var_s+(tp*(tp-1)*(2*tp+5))
+          ENDDO
+          var_s = (REAL(nx*(nx-1)*(2*nx+5), 8)-var_s)/18.
+        ENDIF
    
-    !write(*,*) nx, var_s
-    !write(*,*) nx, s
+        !write(*,*) nx, var_s
+        !write(*,*) nx, s
 
-    IF (s .GT. 0) THEN
-      z = (s-1)/SQRT(var_s)
-    ELSEIF (s .EQ. 0) THEN
-      z = 0
-    ELSEIF (s .LT. 0) THEN
-      z = (s+1)/SQRT(var_s)
+        IF (s .GT. 0) THEN
+          z = (s-1)/SQRT(var_s)
+        ELSEIF (s .EQ. 0) THEN
+          z = 0
+        ELSEIF (s .LT. 0) THEN
+          z = (s+1)/SQRT(var_s)
+        ENDIF
+        
+        ! # calculate the p_value
+        !if (debug) write(*,*) 'calculate the p_value...'
+        ! p = 2*(1-norm.cdf(abs(z))) # two tail test
+        ! h = abs(z) > norm.ppf(1-alpha/2) 
+        p = 2*(1-ncdf(ABS(z)))
+
+        DEALLOCATE(unique_x)
+    ELSE
+        p = -1.
+        z = 0.0
     ENDIF
-    
-    ! # calculate the p_value
-    !if (debug) write(*,*) 'calculate the p_value...'
-    ! p = 2*(1-norm.cdf(abs(z))) # two tail test
-    ! h = abs(z) > norm.ppf(1-alpha/2) 
-    p = 2*(1-ncdf(ABS(z)))
     
     ! # calculate the slope
     !if (debug) write(*,*) 'calculate the slope...'
-    ns = (nx-1)*nx/2
-    ALLOCATE(s_array(ns))
-    i = 0
-    DO k = 1,nx-1
-      DO j = k+1,nx
-        i = i+1
-        s_array(i) = (x(j)-x(k))/(a(j)-a(k))
-      ENDDO
-    ENDDO
-    if (debug) write(*,*) 'median...' 
-    Sn = median(s_array)
-    if (debug) write(*,*) 'median ok'
-    !Sn=1.0 ! test I guess ?
+    IF ((mode.eq.2).or.(mode.eq.3)) THEN
+        !call cpu_time(t0)
+        ns = (nx-1)*nx/2
+        ALLOCATE(s_array(ns))
+        i = 0
+        DO k = 1,nx-1
+          DO j = k+1,nx
+            i = i+1
+            s_array(i) = (x(j)-x(k))/(a(j)-a(k))
+          ENDDO
+        ENDDO
+        !call cpu_time(t1)
+        !r1 = t1-t0
+        !call cpu_time(t0)
+        if (debug) write(*,*) 'median...' 
+        Sn = median(s_array)
+        if (debug) write(*,*) 'median ok'
+        !call cpu_time(t1)
+        !r2 = t1-t0
+        !write(*,*) r1,r2
+        DEALLOCATE(s_array)
+    ELSE
+        Sn=0.0 
+    ENDIF
+
     DEALLOCATE(a)
     DEALLOCATE(x)
-    DEALLOCATE(unique_x)
-    DEALLOCATE(s_array)
     
     return
   
@@ -648,5 +670,6 @@ Function median (XDONT) Result (r_median)
       Return
 !
 End Function median
+
 End Module mk_trend
 
