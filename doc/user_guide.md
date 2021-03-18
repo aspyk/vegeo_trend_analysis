@@ -138,9 +138,8 @@ The following section is dedicated to their detailed description. A flowchart su
 
 ## Description of the modules
 
-> **_TODO_** : add
-
 ### Reading module
+
 One-dimensional time series are required for the Mann-Kendall test but inputs are using several formats and resolution (GPS coordinates for LANDAVAL sites and 4KM, 1KM and 300M resolutions for C3S datasets). Then to be able to use the whole time series for statistics computation a first aggregating pre-processing step is required to get uniform data. For that the reading module can be divided in two part: first the extraction part, then the aggregation part.
 
 #### Extraction
@@ -157,7 +156,7 @@ TODO: So far this task is performed by the tool `TOOL_compare_grid.py`. The func
 Several tests are then applied on all the extracted pixels to consider them as a valid input for the Mann Kendall test. For the matrix cases, these tests are first applied on each pixel of the 4x4 and 12x12 matrices, and if there is more than 75% of valid pixels in them the final unique value is computed averaging the values of all the valid pixels.
 The tests used to differentiate the pixels are the following:
 
-Since the Mann Kendall test requires to keep the real time range between the values, resulting value of the test will be either the valid value or a NaN. Note that when two sensors overlap in time, the newer overwrites the older.
+Since the Mann Kendall test requires to keep the real time range between the values, resulting value of the test will be either the valid value or a NaN. Note that when two sensors overlap in time, the most recent one overwrites the older.
 Therefore, the output of the pre-processing step is a one-dimensional time series for each LANDVAL sites made of 36 time slots per year being filled by either NaN or actual (4KM) or averaged value (1KM or 300M).
 
 ##### C3S ALBEDO
@@ -177,6 +176,7 @@ Discard pixels (ie. apply fill value `65535`) in the analysis when:
 - QFLAG indicates `obs unusable` (QFLAG bit 7)
 
 #### Implementation
+python file: **time_series_reader.py**
 
 Since the Mann-Kendall analysis requires to keep the exact time range between all points, the idea here is to create an initial array full of NaN with the shape `(number_of_time_slot, number_of_sites)`, and then for each time slot, if a file is available, extract all the matrices from the file to put them in a `(number_of_sites, matrix_dim[0], matrix_dim[1])` array. Then, aggregation is applied on the latter array to get a 1D array of shape `number_of_sites` that will fill the initial array.  
 
@@ -208,11 +208,9 @@ The dimension of the output of this extraction will be as said above a `(number_
 #### Output format
 Note that this code was intended to work not only on coordinates list but also on 2D areas. Therefore, to allow the use of the same processing routines for both cases, arrays used for the present points extraction will often have an extra dimension to fit a generic 2D pattern.
 
-> **_TODO_** : describe the meta variables
-
-
+The output format of the cache file for the extraction part is the following:
 ```
-timeseries_xxxxxx_xxxxxx.h5.h5
+timeseries_<start_dekad>_<end_dekad>.h5
  ┣ meta
  ┃ ┣ global_id     Dataset {<time_slot_nb>}
  ┃ ┣ point_names   Dataset {<site_nb>}
@@ -222,19 +220,87 @@ timeseries_xxxxxx_xxxxxx.h5.h5
     ┣ [...]         Dataset {<time_slot_nb>, 1, <site_nb>}
     ┗ var_n         Dataset {<time_slot_nb>, 1, <site_nb>}
 ```
+
+Two groups `vars` and `meta` are written in the h5 file.
+- The `meta` group contains temporal and geographical references. To keep temporal spacing information, the size of the arrays are fixed using the number of dekads between the start date and the end date. If data is not available at a specific time slot, a NaN or fill value is applied.
+  - `point_names` : list of the names of all the extracted points.
+  - `ts_dates` : list of all the reference dates for all the extracted files. Use `0` if no data was available at that time slot.
+  - `global_id` : similarly to the usual timestamp giving the number of seconds since `1970-01-01 00:00:00`, this array is a list of specific timestamp reduced to the number of dekads since the same reference date. With 36 dekads each year, it means `global_id=0` is the first dekad of 1970, `global_id=35` the last dekad of 1970, `global_id=36` the first dekad of 1971 and so on... This helps to merge different cache files and allow easier processing especially in pandas (you can do `global_id%36` or `global_id//36` to have the index of a dekad in a year or the index of the year since 1970 respectively)
+- The `vars` group contains the actual result coming from the aggregation part, that is the list of all the 1D time series for each site ad each variable (i.e. `AL_DH_BB`, `AL_DH_VI` and `AL_DH_NI` for `BBDH` albedo datasets). The arrays are sorted accordingly to the meta variables. 
+
+The name of the cache file is finally given replacing the two placeholders in the following template: `timeseries_<start_dekad>_<end_dekad>.h5`. Dekads are described here with a series of 6 digits using the format `YYYYKK`, `YYYY` being the year with 4 digits and `KK` being the dekad index in the year, between 0 and 35. As an example the cache file for the time range going from 01-01-2000 to 31-12-2001 would be named like this: `timeseries_200000_200135.h5`.
+
 ### Merging module
 
+Merging module allow to merge several cache files extracted from the previous part. It does it automatically in the pipeline since one cache file is created for each sensor, but the module could *a priori* merge any cache file from the extracted part.
+
 #### Implementation
+python file: **time_series_merger.py**
+
+It uses the `global_id` array to merge files to avoid problems of dates management. As an example, to merge a file with a `global_id` from 100 to 150 and another one from 140 to 200, a new array starting at 100 and going to 200 is created and each dataset is then patched in this new array. In case of overlapping as in this example, the input order is simply used to overwrite data with the same `global_id`. In the pipeline, newer sensors automatically erase the older.
+
 #### Output format
+The output format is exactly the same as in the extract module, see above for the details.
 
 ### Trend module
 
+The trend module includes the Mann-Kendall test and the Theil-Sen estimator.
+The Mann-Kendall test (Mann 1945; Kendall 1975) is a nonparametric test whose objective is to determine whether a monotonic trend exists in a time series. It can be applied to time series containing ties and missing values. The null hypothesis of the test (H<sub>0</sub>) is that the observations are a random sample of n variables that are independent and identically distributed; the alternative hypothesis (H<sub>1</sub>) is that a monotonic trend (either upwards or downwards) is present.  
+The Mann-Kendall test assumes that there is no correlation among observations of the time series. To account for this assumption, the Mann-Kendall test is applied on the Z-Scores of the original series. The Z-score (Peters et al. 2002) is calculated as:
+
+<figure style="text-align:center">
+  <img src="./img/eq_zscore.png" alt="eq_zscore.png" height="50"/>
+  <figcaption>Z-score formula.</figcaption>
+</figure>
+
+Where x<sub>ijk</sub>  is the value of the variable (albedo, LAI or fAPAR) for a LANDVAL site i, dekad j (i.e each of the 36 10-day periods of a year), and year k; μ<sub>ij</sub> is the mean of the variable at LANDVAL site i and dekad j over k years; and σ<sub>ij</sub> is the standard deviation of the variable at LANDVAL site i and dekad j over k years.
+For each dekad, the Z-Score is calculated only if at least 70% of the values are non-missing; the Mann-Kendall test is applied only if the time series of Z-Scores has at least 70% of non-missing values.
+The Theil-Sen estimator (Theil 1950; Sen 1968) is a nonparametric procedure to calculate the change of a variable per unit time. It is computed by calculating the slope between all data pairs as follows (Gilbert 1987):
+
+<figure style="text-align:center">
+  <img src="./img/eq_slope.png" alt="eq_slope.png" height="50"/>
+  <figcaption>Theil-Sen estimator.</figcaption>
+</figure>
+
+Where x<sub>jk'</sub> and x<sub>jk</sub> are the values of the variable at periods jk' and jk, respectively, and jk'>jk. The median of the Q values is the Theil-Sen slope estimator.
+The Theil-Sen estimator is calculated on the original time series only if the Mann-Kendall test has been significant (p < 0.05). It is expressed as rate of change per year (year<sup>-1</sup>).
+
 #### Implementation
+
+python file: **compute_trends.py**
+
+<figure style="text-align:center">
+  <img src="./img/trend_flowchart.png" alt="trend_flowchart.png"/>
+  <figcaption>Flowchart of the computations performed in the trend module.</figcaption>
+</figure>
+
 #### Output format
+
+Output file of the trend module are h5 files with the following structure:
+```
+merged_trends_<start_dekad>_<end_dekad>.h5
+ ┣ var_1
+ ┃ ┣ len     Dataset {1, <site_nb>}
+ ┃ ┣ pval    Dataset {1, <site_nb>}
+ ┃ ┣ slope   Dataset {1, <site_nb>}
+ ┃ ┗ zval    Dataset {1, <site_nb>}
+ ┗ var_2
+    ┣ idem        
+    ┗ [...]        
+```
+Where all the results are given for each LANDVAL sites using the same order as input files. The 4 variables in each group are:
+- `len` : number of valid points in the time series used for the trend computation.
+- `pval` : p-value of the z-score scaled time series
+- `slope` : slope computed on the physical scaled (original) time series
+- `zval` : z-score of the Mann-Kendall statistics S (`S/var(S)`)  
 
 ### Plotting module
 
+Plotting module generates scatter plot on global map to display the trend results. Several maps are created for each of the 4 output (`len`, `pval`, `slope`, `zval`) of the trend algorithm. The scatter plot shows the points at the LANDVAL sites location colored by these variables.
+
 #### Implementation
+python file: **trend_file_merger.py**
+
 #### Output format
 
 ### Summary of the module structure
@@ -244,9 +310,15 @@ timeseries_xxxxxx_xxxxxx.h5.h5
   <figcaption>Summary of modules actions.</figcaption>
 </figure>
 
+The following figure give a detailed call graph of the previous flowchart for the case with following arguments:
+```
+-t0 1981-01-01 -t1 2020-12-31 -i latloncsv:config -p c3s_al_bbdh_AVHRR c3s_al_bbdh_VGT c3s_al_bbdh_PROBAV -a extract merge trend plot --config config_vito.yml
+```
+Note that this case has been hardcoded in the main file `main_loop.py` only for example purpose and concerns only the albedo BB_DH product. In a normal mode all products would be processed by the code.
+
 <figure style="text-align:center">
-  <img src="./img/call_graph.png" alt="call_graph.png"/>
-  <figcaption>Call graph of the code.</figcaption>
+  <img src="./img/full_call_graph.png" alt="call_graph.png"/>
+  <figcaption>Call graph of the code with python, input and output files.</figcaption>
 </figure>
 
 ## Usage
