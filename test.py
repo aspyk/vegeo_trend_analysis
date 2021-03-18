@@ -25,6 +25,10 @@ def run_test(n):
     # S3 with all points
     test_args.append("-t0 2018-07-01 -t1 2018-07-31 -i latloncsv:config -p c3s_al_bbdh_SENTINEL3 -a extract --config config_vito.yml".split())
 
+    # Long test
+    test_args.append("-t0 1981-01-01 -t1 2020-12-31 -i latloncsv:config -p c3s_al_bbdh_AVHRR c3s_al_bbdh_VGT c3s_al_bbdh_PROBAV -a extract merge trend plot --config config_vito.yml".split())
+    
+
 
     ### Run test
     print("Tested command:")
@@ -48,5 +52,8 @@ def test_S3_extract_5():
 
 def test_S3_extract_all():
     assert run_test(4)==0
+
+def test_long_albbdh_plot_all():
+    assert run_test(5)==0
 
 
