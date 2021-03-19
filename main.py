@@ -6,6 +6,10 @@ import datetime
 import os,sys
 import generic
 import yaml
+# force non-interactive backend before loading matplotlib.pyplot
+# https://stackoverflow.com/a/44922799/1840524
+import matplotlib
+matplotlib.use('Agg')
 
 def print_versions():
     print('Python '+sys.version)
@@ -16,8 +20,8 @@ def print_versions():
     print("numpy =", np.__version__)
     import pandas as pd
     print("pandas =", pd.__version__)
-    import matplotlib as mpl
-    print("matplotlib =", mpl.__version__)
+    import matplotlib 
+    print("matplotlib =", matplotlib.__version__)
     import netCDF4 
     print("netCDF4 =", netCDF4.__version__)
     import h5py.version
@@ -40,6 +44,11 @@ class ParseInput():
 class Main():
 
     def __init__(self):
+
+        if 1:
+            print_section('Print versions')
+            print_versions()
+
         self.zone_names = ['Euro', 'NAfr', 'SAfr', 'SAme', 'Fra']
         msg_vars = ['albedo', 'lai', 'evapo', 'dssf', 'lst']
         c3s_vars = ['al_bbdh','al_bbbh','al_spdh','al_spbh','lai','fapar']

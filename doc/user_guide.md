@@ -292,7 +292,7 @@ Where all the results are given for each LANDVAL sites using the same order as i
 - `len` : number of valid points in the time series used for the trend computation.
 - `pval` : p-value of the z-score scaled time series
 - `slope` : slope computed on the physical scaled (original) time series
-- `zval` : z-score of the Mann-Kendall statistics S (`S/var(S)`)  
+- `zval` : Mann-Kendall statistics  
 
 ### Plotting module
 
@@ -300,6 +300,8 @@ Plotting module generates scatter plot on global map to display the trend result
 
 #### Implementation
 python file: **trend_file_merger.py**
+
+Nothing specific here, simple plotting function.
 
 #### Output format
 
@@ -372,3 +374,17 @@ The command to run is the following:
 python main_loop.py
 ```
 After a (long) while, cache files and outputs will be available in their respective folder.
+
+## References
+
+- Gilbert, R.O. 1987. Statistical methods for environmental pollution monitoring. New York: Van Nostrand Reinhold Company.
+
+- Kendall, M.G. 1975. Rank Correlation Methods. 4th edition. London: Charles Griffin.
+
+- Mann, H.B. 1945. Non-Parametric Tests against Trend. Econometrica. 13(3), pp.245-259.
+
+- Peters, A.J., Walter-Shea, E.A, Ji, L., Hayes, M., Svoboda, M.D. 2002. Drought monitoring with NDVI-based standardized vegetation index. Photogrammetric engineering and remote sensing. 68(1), pp.71-75.
+
+- Sen, P.K. 1968. Estimates of the regression coefficient based on Kendall's tau. Journal of the American Statistical Association. 63(324), pp.1379-1389.
+
+- Theil, H. 1950. A rank-invariant method of linear and polynomial regression analysis I, II, III. Proceedings of the Koninklijke Nederlandse Akademie van Wetenschappen. 53, pp.386–392, 521–525, 1397–1412
