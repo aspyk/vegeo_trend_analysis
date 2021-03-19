@@ -269,11 +269,13 @@ def plot_trends(product, chunks, plot_name, plot_choice, config):
 
 
 def plot_trends_scatter(product, chunks, plot_name, config):
-    
+
     import matplotlib.pyplot as plt
-    # import cartopy.crs as ccrs # not find on VITO ?
+    import matplotlib.colors
+    import matplotlib.cm as mcm
     from mpl_toolkits.axes_grid1 import make_axes_locatable
     from matplotlib.transforms import Bbox
+    # import cartopy.crs as ccrs # not find on VITO ?
     
     list_of_paths = (pathlib.Path(config['output_path']['trend']) / product.name).glob('*')
     latest_path = max(list_of_paths, key=lambda p: p.stat().st_ctime)
@@ -291,6 +293,7 @@ def plot_trends_scatter(product, chunks, plot_name, config):
     ## Read results stats
     hf = h5py.File(input_trend_file, 'r')
     
+    #for invar in list(hf.keys())[:1]: # debug shortcut
     for invar in hf.keys():
         print('---', invar)
         res_vars = ['pval', 'zval', 'len', 'sn']
@@ -307,10 +310,17 @@ def plot_trends_scatter(product, chunks, plot_name, config):
         len_max = np.abs(np.nanmax(trends['len']))
         len_min = np.abs(np.nanmin(trends['len']))
 
+        scmap = 'seismic'
+        scmap = 'RdYlGn'
+        scmap = 'Spectral'
+        fcmap = mcm.get_cmap('seismic')
+        cmap_mod = [fcmap(i) for i in np.linspace(0,1,15)]
+        cmap_mod[7] = mcm.get_cmap('RdYlGn')(0.5)
+        scmap = matplotlib.colors.LinearSegmentedColormap.from_list("", cmap_mod)
         plot_param = {}
         plot_param['len'] = {'vmin':len_min, 'vmax':len_max, 'cmap':'jet'}
-        plot_param['sn'] = {'vmin':-sn_max, 'vmax':sn_max, 'cmap':'seismic'}
-        plot_param['zval'] = {'vmin':-zval_max, 'vmax':zval_max, 'cmap':'seismic'}
+        plot_param['sn'] = {'vmin':-sn_max, 'vmax':sn_max, 'cmap':scmap}
+        plot_param['zval'] = {'vmin':-zval_max, 'vmax':zval_max, 'cmap':scmap}
         plot_param['pval'] = {'vmin':0, 'vmax':0.05, 'cmap':'jet'}
         #plot_param['pval'] = {'cmap':'jet'}
 
@@ -338,15 +348,18 @@ def plot_trends_scatter(product, chunks, plot_name, config):
 
             cm = 'jet'
             cm = 'gist_ncar'
+            cm = 'terrain'
+            cm = matplotlib.colors.LinearSegmentedColormap.from_list("", ["black","green"])
+            cm = 'Greys'
             #mat = ax.imshow(data[0,::2,::2], cmap=cm)
             #print(mask.shape)
             for ax in axs:
-                mat = ax.imshow(mask, extent=extent, cmap='terrain')
+                mat = ax.imshow(mask, extent=extent, cmap=cm, vmin=0, vmax=2)
         
         # Add landval sites with scatter
+        cbs = []
         for ax,rvar in zip(axs,res_vars):
             if ptype==2:
-                cm = 'seismic'
                 #pts = (0.5*chunks.site_coor[['ilat', 'ilon']].values.T).astype(np.int32)
                 #print(pts.shape)
                 if rvar=='pval':
@@ -360,7 +373,7 @@ def plot_trends_scatter(product, chunks, plot_name, config):
                 # of ax and the padding between cax and ax will be fixed at 0.05 inch.
                 divider = make_axes_locatable(ax)
                 cax = divider.append_axes("right", size="5%", pad=0.05)
-                plt.colorbar(sc, cax=cax) 
+                cbs.append(plt.colorbar(sc, cax=cax)) # store colorbar just in case.. (maybe when matplotlib will be upgraded to use get_tightbbox method below to save subplot)
             
             ax.set_aspect('equal')
             
@@ -410,10 +423,11 @@ def plot_trends_scatter(product, chunks, plot_name, config):
         fig.savefig(str(img_path))
         print('Image saved to:', str(img_path))
         
-        ## Export sublplots separately 
-        for ax,rvar in zip(axs,res_vars):
+        ## Export subplots separately 
+        for ax,rvar in zip(axs, res_vars):
             extent = ax.get_tightbbox(fig.canvas.renderer).transformed(fig.dpi_scale_trans.inverted())
             img_path = output_path/'{}_{}_{}.png'.format(case_name, invar, rvar)
+            extent.x1 = extent.x0 + 1.15*extent.width # manually extend the Bbox to save to add the colorbar (which is not included by default in ax.get_tightbbox)
             fig.savefig(str(img_path), bbox_inches=extent)
             print('Image saved to:', str(img_path))
 
