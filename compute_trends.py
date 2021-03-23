@@ -199,7 +199,7 @@ def pandas_wrapper(data_test0, pt_names, globid, b_deb):
     
     ### Commpute z-score
     
-    df_zman = (df2-df2.mean())/df2.std() # default ddof=1 or df2.std(ddof=0) does not change final p-value
+    df_zman = (df2-df2.mean())/df2.std(ddof=0) # default ddof(=1) or df2.std(ddof=0) does not change final p-value
     if b_deb: print(df_zman)
     
     ### Back to continuous time series, keep all NaN and remove only leading and trailing one.
