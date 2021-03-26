@@ -167,14 +167,23 @@ def pandas_wrapper(data_test0, pt_names, globid, b_deb):
 
     df = pd.DataFrame(data_test0, columns=pt_names, index=[globid//36, globid%36])
     if b_plot: save_heatmap(df.values.T, "before")
-    df2 = df.unstack()
+    df2 = df.unstack(fill_value=-999) # Add a fill value different than NaN to differentiate valid and non-valid NaN
     if b_deb: print(df2)
     
     ### Check that for each dekad, there is at least 70% of non-NaN observations. 
     
     ti()
-    #valid_dekad = df2.apply(lambda x: (np.count_nonzero(~np.isnan(x))/df2.shape[0])>0.7)
-    valid_dekad = ((~np.isnan(df2.values)).sum(axis=0)/df2.shape[0])>0.7
+    # Get number of non-valid nan per dekad added by the unstack step
+    np_df2 = df2.values
+    nonvalid_nan_year = (np_df2==-999).sum(axis=1)/len(pt_names) # rows
+    nonvalid_nan_dekad = (np_df2==-999).sum(axis=0) # columns
+    #print(nonvalid_nan_year)
+    #print(nonvalid_nan_dekad)
+    n_trim_start = int(nonvalid_nan_year[0])
+    n_trim_end = int(nonvalid_nan_year[-1])
+
+    np_df2[np_df2==-999] = np.nan
+    valid_dekad = ((~np.isnan(np_df2)).sum(axis=0)/(df2.shape[0]-nonvalid_nan_dekad))>0.7 # remove nonvalid nan for the scaling
     ti('t01:apply_0.7filter')        
     #print("valid_dekad=", valid_dekad)
     # Number of valid dekad:
@@ -205,7 +214,11 @@ def pandas_wrapper(data_test0, pt_names, globid, b_deb):
     ### Back to continuous time series, keep all NaN and remove only leading and trailing one.
     
     df_res = df_zman.stack(dropna=False)
-    df_res = df_res.loc[df_res.first_valid_index():df_res.last_valid_index()]
+    #df_res_old = df_res.loc[df_res.first_valid_index():df_res.last_valid_index()]
+    df_res = df_res.iloc[n_trim_start:-n_trim_end]
+    #print("df_res_old.shape=", df_res_old.shape)
+    #print("df_res.shape=", df_res.shape)
+    #sys.exit()
     if b_deb: print(df_res)
     if b_plot: save_heatmap(df_res.values.T, "after")
 
