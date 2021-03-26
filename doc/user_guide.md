@@ -11,6 +11,79 @@ title: C3S Quality Monitoring Tool
 ## Objective of the tool
 The objective of the tool is to compute albedo, LAI and FAPAR trends based on Mann Kendall test on copernicus v2 data. This tool will used about every 6 months in order to update the trend.
 
+## Usage
+
+### Setup
+
+#### Clone and fortran compilation
+```properties
+### TO BE MODIFIED AFTER MERGING, SHOULD POINT TO A TAGGED VERSION
+git clone --single-branch --branch feature/genericreader https://github.com/aspyk/vegeo_trend_analysis
+cd vegeo_trend_analysis/
+./run_setup.sh
+```
+
+#### Tests
+```properties
+pytest test.py -k "AVHRR_plot_all"
+pytest test.py -k "S3_extract_all"
+```
+
+
+### Manual run
+A manual run is a run where specific time range, sensor and product are given by the user in a command line.
+```
+python main.py -t0 <start_date> -t1 <end_date> -i <type_of_input> -p <product_tag> -a <action> --config <config_file_path> [-d] [--debug 1]
+```
+Example:
+```
+python main.py -t0 1981-01-01 -t1 2020-12-31 -i latloncsv:config -p c3s_al_bbdh_AVHRR c3s_al_bbdh_VGT c3s_al_bbdh_PROBAV -a extract merge trend plot -d --config config_vito.yml
+```
+With:
+ - -t0 START_DATE : start date in iso format `YYYY-MM-DD`.
+ - -t1 END_DATE : end date in iso format `YYYY-MM-DD`.
+ - -p PRODUCT_TAG : whitespace separated list of tag(s) using the `c3s_<product>_<sensor>` format. `product` can be in `{al_bbdh,al_bbbh,al_spdh,al_spbh,lai,fapar}` and `sensor` in `{AVHRR,VGT,PROBAV,SENTINEL3}`.
+- -i INPUT : input type and parameter(s), use the format `<type>:<param1>,<param2>...`. The appropriate input for quality monitoring on LANDVAL sites is `latloncsv:<path_to_csv_file>` but the shortcut option `latloncsv:config` allow to read the input csv file path from the YAML config file.
+- -a ACTION : whitespace separated list of possible actions in `{extract,merge,trend,plot}`
+- -c CONFIG : path to the YAML config file.
+- [-d] DELETE_CACHE : option to force overwriting of the cache files and reprocess data.
+- [-g ] DEBUG : debug option, read only a small subset of all the LANDVAL sites. User have to modify this list in `main.py` file.
+
+
+
+### Automatic run
+The automatic run can be launch with a single shorter command. The run can loop over:
+- the whole available time range, that is from 1981 to the date of the run.
+- AVHRR, VGT, PROBAV and SENTINEL3 sensors.
+- albedo, LAI and fAPAR products.
+
+The command to run is the following:
+```
+python main_loop.py -p <product_list> -s <sensor_list>
+# With:
+# choices for product_list: al_bbdh,al_bbbh,al_spdh,al_spbh,lai,fapar
+# choices for sensor_list: AVHRR,VGT,PROBAV,SENTINEL3
+
+# Example:
+python main_loop.py -p al_bbdh al_bbbh -s AVHRR VGT PROBAV
+```
+After a (long) while, cache files and outputs will be available in their respective folder (see following sections).
+
+#### Output redirection
+When running a long run it may be better to redirect output to a log file. An option is available only for the automated run using `-r` option, like this:
+```
+$> python main_loop.py -p al_bbdh -s AVHRR VGT PROBAV -r
+Write output to out_20210326_094724.log
+Started at 2021-03-24 09:47:24.221320
+Finished at 2021-03-24 09:48:14.344854
+$>
+```
+In addition to that, errors are also log in the followings files:
+```
+traceback_20210326_094724.log
+err_20210326_094724.log
+```
+
 
 ## Overview of the pipeline
 The structure of the tool is composed of a main core pipeline running on a single product, this pipeline looping then on a list of desired products products.
@@ -323,57 +396,6 @@ Note that this case has been hardcoded in the main file `main_loop.py` only for 
   <figcaption>Call graph of the code with python, input and output files.</figcaption>
 </figure>
 
-## Usage
-
-### Setup
-
-#### Clone and fortran compilation
-```properties
-### TO BE MODIFIED AFTER MERGING, SHOULD POINT TO A TAGGED VERSION
-git clone --single-branch --branch feature/genericreader https://github.com/aspyk/vegeo_trend_analysis
-cd vegeo_trend_analysis/
-./run_setup.sh
-```
-
-#### Tests
-```properties
-pytest test.py -k "AVHRR_plot_all"
-pytest test.py -k "S3_extract_all"
-```
-
-
-### Manual run
-A manual run is a run where specific time range, sensor and product are given by the user in a command line.
-```
-python main.py -t0 <start_date> -t1 <end_date> -i <type_of_input> -p <product_tag> -a <action> --config <config_file_path> [-d] [--debug 1]
-```
-Example:
-```
-python main.py -t0 1981-01-01 -t1 2020-12-31 -i latloncsv:config -p c3s_al_bbdh_AVHRR c3s_al_bbdh_VGT c3s_al_bbdh_PROBAV -a extract merge trend plot -d --config config_vito.yml
-```
-
- - -t0 START_DATE : start date in iso format `YYYY-MM-DD`.
- - -t1 END_DATE : end date in iso format `YYYY-MM-DD`.
- - -p PRODUCT_TAG : whitespace separated list of tag(s) using the `c3s_<product>_<sensor>` format. `product` can be in `{al_bbdh,al_bbbh,al_spdh,al_spbh,lai,fapar}` and `sensor` in `{AVHRR,VGT,PROBAV,SENTINEL3}`.
-- -i INPUT : input type and parameter(s), use the format `<type>:<param1>,<param2>...`. The appropriate input for quality monitoring on LANDVAL sites is `latloncsv:<path_to_csv_file>` but the shortcut option `latloncsv:config` allow to read the input csv file path from the YAML config file.
-- -a ACTION : whitespace separated list of possible actions in `{extract,merge,trend,plot}`
-- -c CONFIG : path to the YAML config file.
-- [-d] DELETE_CACHE : option to force overwriting of the cache files and reprocess data.
-- [-g ] DEBUG : debug option, read only a small subset of all the LANDVAL sites. User have to modify this list in `main.py` file.
-
-
-
-### Automatic run
-The automatic run can be launch with a single short command. The run will loop over:
-- the whole available time range, that is from 1981 to the date of the run.
-- AVHRR, VGT, PROBAV and SENTINEL3 sensors.
-- albedo, LAI and fAPAR products.
-
-The command to run is the following:
-```
-python main_loop.py
-```
-After a (long) while, cache files and outputs will be available in their respective folder.
 
 ## References
 
