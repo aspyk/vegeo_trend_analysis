@@ -106,6 +106,8 @@ class Main():
         Process the command line options
         """
          
+        print_section('Pre-processing')
+
         # Add some text coloring
         CR  = '\33[31m' # red
         CG  = '\33[32m' # green
@@ -174,7 +176,8 @@ class Main():
                 
                 ## Can use a subset of points for debugging if --debug = 1
                 if self.args.debug==1:
-                    slist = ['FRENCHMAN_FLAT', 'BELMANIP_00332', 'Egypt#1', 'EL_FARAFRA', 'BELMANIP_00416', 'DOM1']
+                    slist = ['BELMANIP_00108', 'DIRECT_00039 - WatsonLake1', 'BELMANIP_00099', 'CA-NS4', 'NSA_YJP_BOREAS', 'CA-OJP', 'SS_OJP_BOREAS', 'CA-SJ1', 'CA-SJ3', 'PADDOCKWOOD', 'BELMANIP_00095', 'BELMANIP_00094', 'BELMANIP_00106', 'BRATTS_LAKE', 'REGINA', 'BELMANIP_00086']
+                    #slist = ['FRENCHMAN_FLAT', 'BELMANIP_00332', 'Egypt#1', 'EL_FARAFRA', 'BELMANIP_00416', 'DOM1']
                     self.chunks = generic.CoordinatesConverter(input_coor, sensor=sensor, sub=slist)
                 else: 
                     self.chunks = generic.CoordinatesConverter(input_coor, sensor=sensor)
@@ -210,7 +213,6 @@ class Main():
             import time_series_reader
             
             cache_files = []
-            print(self.products)
             for prod in self.products:
                 print('  Process {0}'.format(prod.name))
                 
