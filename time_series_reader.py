@@ -466,32 +466,43 @@ class TimeSeriesExtractor():
     def _get_c3s_lai_fapar_points(self):
 
         q_chunk = self._extract_points('QFLAG', np.uint8)
+
+        #q_chunk = self._extract_points('retrieval_flag', np.uint32)
         
         d = {}
         for v in self.config['var']:
-            prod_chunk = self._extract_points(v, np.int16)
+            prod_chunk = self._extract_points(v, np.uint16)
             #error_chunk = self._extract_points(v+'_ERR', np.int16)
         
-            # Discard pixels (ie. Apply fill value -65535) in the analysis when:
+            # Discard pixels (ie. Apply fill value 65535) in the analysis when:
             # - Outside valid range in LAI / fAPAR ([0, 65534])
-            # - QFLAG indicates ‘obs_is_fillvalue’ (QFLAG bit 0)
-            # - QFLAG indicates ‘tip_untrusted’ (QFLAG bit 6)
-            # - QFLAG indicates ‘obs unusable’ (QFLAG bit 7)
+            # EITHER:
+            # - QFLAG indicates ‘sea’ or ‘continental water’ (QFLAG bits 0-1) -> Fill value in product
+            # - QFLAG indicates the algorithm failed (QFLAG bit 7) -> Fill value in product
+            # OR:
+            # - retrieval_flag indicates ‘obs_is_fillvalue’ (QFLAG bit 0)
+            # - retrieval_flag indicates ‘tip_untrusted’ (QFLAG bit 6)
+            # - retrieval_flag indicates ‘obs unusable’ (QFLAG bit 7)
 
             b_print_sel = 0
             # int value is used instead of np.nan because nan is a float
-            discard = -65535
+            discard = 65535
             prod_chunk[ (prod_chunk<0) | (prod_chunk>65534) ] = discard
             if b_print_sel: self._count_val('data range', prod_chunk, discard)
             if b_print_sel: print(np.vectorize(np.binary_repr)(q_chunk, width=8))
-            prod_chunk[ ((q_chunk >> 0) & 1) == 1 ] = discard # if bit 0 is set 
-            if b_print_sel: self._count_val('obs_is_fillvalue', prod_chunk, discard)
-            prod_chunk[ ((q_chunk >> 6) & 1) == 1 ] = discard # if bit 6 is set 
-            if b_print_sel: self._count_val('tip_untrusted', prod_chunk, discard)
-            prod_chunk[ ((q_chunk >> 7) & 1) == 1 ] = discard # if bit 7 is set 
-            if b_print_sel: self._count_val('obs_unusable', prod_chunk, discard)
+            if 1: # if qflag
+                prod_chunk[ ~((q_chunk & 0b11) == 0b01) ] = discard # if bit 1 and 0 are not land (= 01) set np.nan
+                if b_print_sel: self._count_val('land', prod_chunk, discard)
+                prod_chunk[ ((q_chunk >> 7) & 1) == 1 ] = discard # if bit 7 is set 
+                if b_print_sel: self._count_val('algo failed', prod_chunk, discard)
+            else: # if retrieval_flag
+                prod_chunk[ ((q_chunk >> 0) & 1) == 1 ] = discard # if bit 0 is set 
+                if b_print_sel: self._count_val('obs_is_fillvalue', prod_chunk, discard)
+                prod_chunk[ ((q_chunk >> 6) & 1) == 1 ] = discard # if bit 6 is set 
+                if b_print_sel: self._count_val('tip_untrusted', prod_chunk, discard)
+                prod_chunk[ ((q_chunk >> 7) & 1) == 1 ] = discard # if bit 7 is set 
+                if b_print_sel: self._count_val('obs_unusable', prod_chunk, discard)
             #sys.exit()
-            #prod_chunk = prod_chunk.
 
             ## Agregate data using quality flag
             # Count True in each window and keep only when 75% is ok
@@ -506,8 +517,9 @@ class TimeSeriesExtractor():
             print('valid : {0} / {1}'.format(np.count_nonzero(q_mask), self.chunk.dim[1]) )
             #print('invalid indices:')
             #print(np.where(q_mask==0)[0])
-            d[v] = 1e-4 * prod_chunk
-            d[v][ d[v]==discard*1e-4 ] = np.nan # replace discard value by nan
+            d[v] = prod_chunk/6553.
+            #d[v] = prod_chunk*1.
+            d[v][ d[v]==discard/6553. ] = np.nan # replace discard value by nan
             d[v] = np.nanmean(d[v], axis=(1,2))
             d[v] = np.where(q_mask,  d[v], np.nan)
             d[v].reshape((1,-1)) # fake 2D array (1,nb_pts)
