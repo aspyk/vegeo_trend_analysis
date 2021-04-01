@@ -150,7 +150,8 @@ c3s_lai_AVHRR:
             - 'LAI'
 
 c3s_lai_VGT:
-    root: '/data/c3s_pdf_live/MTDA/C3S_LAI_Global_1KM_V2/V2.0.1'
+    #root: '/data/c3s_pdf_live/MTDA/C3S_LAI_Global_1KM_V2/V2.0.1'
+    root: '/data/c3s_pdf_live/MTDA/C3S_LAI_Global_1KM_V1/V1.0.1'
     <<: *param
     <<: *varlai
     
@@ -170,7 +171,8 @@ c3s_fapar_AVHRR:
             - 'fAPAR'
 
 c3s_fapar_VGT:
-    root: '/data/c3s_pdf_live/MTDA/C3S_FAPAR_Global_1KM_V2/V2.0.1'
+    #root: '/data/c3s_pdf_live/MTDA/C3S_FAPAR_Global_1KM_V2/V2.0.1'
+    root: '/data/c3s_pdf_live/MTDA/C3S_FAPAR_Global_1KM_V1/V1.0.1'
     <<: *param
     <<: *varfapar
     

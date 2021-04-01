@@ -1,12 +1,12 @@
 ---
-title: C3S Quality Monitoring Tool
+title: C3S Quality Monitoring Tool user guide
 ---
 <link rel="stylesheet" href="./css/custom.css">
 <!--
 <link rel="stylesheet" href="./css/modest.css">
 -->
 
-# C3S Quality Monitoring Tool
+# C3S Quality Monitoring Tool | User Guide
 
 ## Objective of the tool
 The objective of the tool is to compute albedo, LAI and FAPAR trends based on Mann Kendall test on copernicus v2 data. This tool will used about every 6 months in order to update the trend.
@@ -370,6 +370,8 @@ Where all the results are given for each LANDVAL sites using the same order as i
 ### Plotting module
 
 Plotting module generates scatter plot on global map to display the trend results. Several maps are created for each of the 4 output (`len`, `pval`, `slope`, `zval`) of the trend algorithm. The scatter plot shows the points at the LANDVAL sites location colored by these variables.
+
+Note that the `zval` shown in the plot corresponds with the Mann-Kendall test Z-statistic (one value per time series), and not with the Z-score calculated during the pre-processing (one value per observation).
 
 #### Implementation
 python file: **trend_file_merger.py**

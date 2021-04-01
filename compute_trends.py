@@ -215,7 +215,7 @@ def pandas_wrapper(data_test0, pt_names, globid, b_deb):
     
     df_res = df_zman.stack(dropna=False)
     #df_res_old = df_res.loc[df_res.first_valid_index():df_res.last_valid_index()]
-    df_res = df_res.iloc[n_trim_start:-n_trim_end]
+    df_res = df_res.iloc[n_trim_start:df_res.shape[0]-n_trim_end]
     #print("df_res_old.shape=", df_res_old.shape)
     #print("df_res.shape=", df_res.shape)
     #sys.exit()
