@@ -4,7 +4,7 @@ from bokeh.io import output_notebook, save
 from bokeh.plotting import figure
 
 from bokeh.layouts import column
-from bokeh.models import CustomJS, ColumnDataSource, Slider
+from bokeh.models import CustomJS, ColumnDataSource, Slider, HoverTool
 
 import h5py
 import pandas as pd
@@ -27,7 +27,11 @@ class BokehPlot():
 
         self.lon = lon 
         self.lat = lat
-    
+
+    def rebin(self, a, shape):
+        """Downsample a 2D numpy array"""
+        sh = shape[0],a.shape[0]//shape[0],shape[1],a.shape[1]//shape[1]
+        return a.reshape(sh).mean(-1).mean(1) 
 
     def plot_trends_scatter_bokeh(self):
         lon = self.lon
@@ -37,27 +41,32 @@ class BokehPlot():
         
         
         p = figure(plot_width=int(400.*dw/dh), plot_height=400, match_aspect=True,
-                   tools="pan,wheel_zoom,box_zoom,tap,hover,reset",
+                   tools="pan,wheel_zoom,box_zoom,tap,reset",
                    output_backend="webgl")
 
         ##--- Add land mask
 
         # must give a vector of image data for image parameter
-        p.image(image=[np.flipud(self.mask[::20,::20])], 
+        mask = self.rebin(self.mask, (int(self.mask.shape[0]/20), int(self.mask.shape[1]/20)))
+        #p.image(image=[np.flipud(self.mask[::20,::20])], 
+        p.image(image=[np.flipud(mask)], 
                 x=lon[0], y=lat[-1], dw=dw, dh=dh,
-                palette=('#FFFFFF', '#888888'), level="image")
+                palette=('#FFFFFF', '#EEEEEE', '#DDDDDD', '#CCCCCC', '#BBBBBB', '#AAAAAA', '#999999', '#888888'), level="image")
         p.grid.grid_line_width = 0.5
     
         ##--- Read csv, filter and convert to ColumnDataSource
 
         df = pd.read_csv('output_plot/C3S_AL_BBDH_19810920_20200630/C3S_AL_BBDH_19810920_20200630.csv', sep=';', index_col=0)
+        df['id2'] = np.arange(df.shape[0])
+        print("df.shape=", df.shape)
         df = df.dropna(subset=['AL_DH_BB_sn'])
-        df['alpha'] = np.ones(df.shape[0]) # Add alpha layer for plotting
         print(df)
         #df = df.drop(df[(df['AL_DH_BB_sn'] ) & (df.score > 20)].index)
 
-        dfs = df[['LONGITUDE', 'LATITUDE', 'AL_DH_BB_sn', 'alpha']]
-        source = ColumnDataSource(dfs)
+        dfs = df[['LONGITUDE', 'LATITUDE', 'AL_DH_BB_sn', 'id2']]
+        ## Create two sources: one to keep all the points and one that will be populated according to slider
+        s_ori = ColumnDataSource(dfs)
+        source = ColumnDataSource(data=dict(LONGITUDE=[], LATITUDE=[], AL_DH_BB_sn=[], id2=[]))
 
         ##--- Modify seismic colormap
 
@@ -78,62 +87,69 @@ class BokehPlot():
 
         ##--- Add scatter
 
-        p.scatter(x='LONGITUDE', y='LATITUDE', size=12,
-                  color={'field': 'AL_DH_BB_sn', 'transform': color_mapper},
-                  fill_alpha='alpha', line_alpha='alpha', source=source)
+        scatter_renderer = p.scatter(x='LONGITUDE', y='LATITUDE', size=12,
+                                     color={'field': 'AL_DH_BB_sn', 'transform': color_mapper},
+                                     source=source)
 
         color_bar = ColorBar(color_mapper=color_mapper, label_standoff=12)
-
         p.add_layout(color_bar, 'right')
 
-        #plot.line('x', 'y', source=source, line_width=3, line_alpha=0.6)
-        
+        ## Add hover tool that only act on scatter and not on the background land mask
+        p.add_tools(
+            HoverTool(
+                #tooltips=[("A", "@A"), ("B", "@B"), ("C", "@C")], mode = "vline"
+                renderers=[scatter_renderer]
+            )
+        )
+
+        ##--- Add slider
+
         slider = Slider(start=0.0, end=sn_max*1000., value=0.0, step=sn_max*1000./20., title="Threshold [10e-3]")
         
-        if 0:
-            update_scatter_alpha = CustomJS(args=dict(source=source, slider=slider), code="""
-                var data = source.data;
-                var f = slider.value;
-                var a = data['alpha'];
-                var np = Math.round(f*10.);
-                //console.log(np);
-
-                for (var i = 0; i < a.length; i++) {
-                    a[i] = 1.0;
+        update_scatter = CustomJS(args=dict(source=source, slider=slider, s_ori=s_ori), code="""
+            var data_ori =  s_ori.data;
+            var f    =  slider.value;
+            var lon  =  data_ori['LONGITUDE'];
+            var lat  =  data_ori['LATITUDE'];
+            var c    =  data_ori['AL_DH_BB_sn'];
+            var id    =  data_ori['id2'];
+            const data = {'LONGITUDE':[], 'LATITUDE':[], 'AL_DH_BB_sn':[], 'id2':[]};
+            //const indices = cb_data.index.indices
+            //for (var i = 0; i < indices.length; i++) {
+            //    data['x0'].push(circle.data.x[start])
+            //    data['y0'].push(circle.data.y[start])
+            //    data['x1'].push(circle.data.x[end])
+            //    data['y1'].push(circle.data.y[end])
+            //}
+            for (var i = 0; i < lon.length; i++) {
+                if (Math.abs(c[i])>=0.001*f) {
+                    data['LONGITUDE'].push(lon[i]);
+                    data['LATITUDE'].push(lat[i]);
+                    data['AL_DH_BB_sn'].push(c[i]);
+                    data['id2'].push(id[i]);
                 }
-                
-                for (var i = np; i < a.length; i++) {
-                    a[i] = 0;
-                }
-                
-                // necessary because we mutated source.data in-place
-                source.change.emit();
-            """)
-        if 1:
-            update_scatter_alpha = CustomJS(args=dict(source=source, slider=slider), code="""
-                var data = source.data;
-                var f = slider.value;
-                var a = data['alpha'];
-                var c = data['AL_DH_BB_sn'];
-                //console.log(np);
-
-                for (var i = 0; i < a.length; i++) {
-                    a[i] = 1.0;
-                }
-                
-                for (var i = 0; i < a.length; i++) {
-                    if (Math.abs(c[i])<0.001*f) {
-                        a[i] = 0;
-                    }
-                }
-                
-                // necessary because we mutated source.data in-place
-                source.change.emit();
-            """)
-        slider.js_on_change('value', update_scatter_alpha)
+            }
+            source.data = data
+        """)
+        slider.js_on_change('value', update_scatter)
         
-        
-        save(column(slider, p))
+        ##--- Add time series of selected point      
+
+        hf = h5py.File('output_extract/c3s_al_bbdh_MERGED/timeseries_198125_202017.h5', 'r')
+        ts = hf['vars/AL_DH_BB'][:,0,:].T
+        dates = hf['meta/global_id'][:]
+
+        print(ts.shape)
+
+        p2 = figure(plot_width=int(400.*dw/dh), plot_height=400,
+                   tools="pan,wheel_zoom,box_zoom,hover,reset",
+                   output_backend="webgl")
+        al = ts[500]
+        p2.line(x=dates, y=al)
+
+        ##--- Save html file
+
+        save(column(slider, p, p2))
         #save(p)
 
     def test_image(self):
