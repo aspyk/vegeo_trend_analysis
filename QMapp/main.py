@@ -3,8 +3,9 @@ import numpy as np
 from bokeh.io import save, curdoc
 from bokeh.plotting import figure
 from bokeh.layouts import column
-from bokeh.models import CustomJS, ColumnDataSource, Slider, HoverTool, TapTool
+from bokeh.models import CustomJS, ColumnDataSource, Slider, HoverTool, TapTool, BoxAnnotation
 
+from datetime import datetime
 import h5py
 import pandas as pd
 import os,sys
@@ -68,7 +69,8 @@ class BokehPlot():
         dfs = df[['LONGITUDE', 'LATITUDE', 'AL_DH_BB_sn', 'id2']]
         ## Create two sources: one to keep all the points and one that will be populated according to slider
         s_ori = ColumnDataSource(dfs)
-        source = ColumnDataSource(data=dict(LONGITUDE=[], LATITUDE=[], AL_DH_BB_sn=[], id2=[]))
+        #source = ColumnDataSource(data=dict(LONGITUDE=[], LATITUDE=[], AL_DH_BB_sn=[], id2=[]))
+        source = ColumnDataSource(dfs)
 
         ##--- Modify seismic colormap
 
@@ -100,7 +102,8 @@ class BokehPlot():
         p.add_tools(
             HoverTool(
                 #tooltips=[("A", "@A"), ("B", "@B"), ("C", "@C")], mode = "vline"
-                renderers=[scatter_renderer]
+                renderers=[scatter_renderer],
+                mode='mouse'
             )
         )
 
@@ -119,16 +122,69 @@ class BokehPlot():
         
         hf = h5py.File(self.app_dir/'data/output_extract/c3s_al_bbdh_MERGED/timeseries_198125_202017.h5', 'r')
         ts = hf['vars/AL_DH_BB'][:,0,:].T
-        dates = hf['meta/global_id'][:]
+        dates = hf['meta/ts_dates'][:].view('datetime64[s]').tolist()
+        #dates = hf['meta/global_id'][:]
+        #dates = 1970+dates//36 + (10*(1+dates%36))/365.
 
-        print(ts.shape)
+        pw = int(400.*dw/dh)
+        ph = 200
+        p2 = figure(plot_width=pw, plot_height=ph,
+                   tools="pan,wheel_zoom,box_zoom,reset",
+                   output_backend="webgl", x_axis_type="datetime")
 
-        p2 = figure(plot_width=int(400.*dw/dh), plot_height=200,
-                   tools="pan,wheel_zoom,box_zoom,hover,reset",
-                   output_backend="webgl")
 
-        ts_source = ColumnDataSource(data=dict(dates=[], var=[]))
+
+        p2.add_tools(
+        HoverTool(tooltips=[
+            ("Date", "@dates{%Y-%m-%d}"),  # must specify desired format here
+            ("Value", "@var")
+        ], formatters={"@dates":"datetime"}, mode='vline')
+        )
+
+        ## Create source and plot it
+
+        #ts_source = ColumnDataSource(data=dict(dates=[], var=[]))
+        d_init = [d for d in dates if d.year != 1970]
+        ts_source = ColumnDataSource(data=dict(dates=d_init, var=np.zeros_like(d_init)))
         p2.line(x='dates', y='var', source=ts_source)
+        
+
+        ## Add satellite periods
+        # Sensor dates
+        sensor_dates = []
+        sensor_dates.append(['NOAA7',  ('20-09-1981', '31-12-1984')])
+        sensor_dates.append(['NOAA9',  ('20-03-1985', '10-11-1988')])
+        sensor_dates.append(['NOAA11', ('30-11-1988', '20-09-1994')])
+        sensor_dates.append(['NOAA14', ('10-02-1995', '10-03-2001')])
+        sensor_dates.append(['NOAA16', ('20-03-2001', '10-09-2002')])
+        sensor_dates.append(['NOAA17', ('20-09-2002', '31-12-2005')])
+        sensor_dates.append(['VGT1',   ('10-04-1998', '31-01-2003')])
+        sensor_dates.append(['VGT2',   ('31-01-2003', '31-05-2014')])
+        sensor_dates.append(['PROBAV', ('31-10-2013', '30-06-2020')])
+        sensor_dates = [[v[0], [datetime.strptime(i, "%d-%m-%Y") for i in v[1]]] for v in sensor_dates]
+
+        import itertools
+        from bokeh.palettes import Category10 as palette
+        colors = itertools.cycle(palette[10])
+        top_ba = []
+        bottom_ba = []
+        for v,color in zip(sensor_dates, colors):
+            if 'VGT' not in v[0]:
+                top_ba.append(BoxAnnotation(top=ph, top_units='screen', bottom=int(ph/2), bottom_units='screen',
+                                   left=v[1][0], right=v[1][1], fill_alpha=0.2, fill_color=color))
+            else:
+                bottom_ba.append(BoxAnnotation(top=int(ph/2), top_units='screen', bottom=0, bottom_units='screen',
+                                   left=v[1][0], right=v[1][1], fill_alpha=0.2, fill_color=color))
+        if 1:
+            for ba in top_ba:
+                p2.add_layout(ba)
+            for ba in bottom_ba:
+                p2.add_layout(ba)
+
+            ## Plot name
+            #if tmin < 0.5*(v[1][1]+v[1][0]) < tmax:
+            #    t = plt.text(0.5*(v[1][1]+v[1][0]), 1.*dmax, v[0], horizontalalignment='center', fontsize=8)
+
 
         def update_ts(attr, old, new):
             """
@@ -136,9 +192,26 @@ class BokehPlot():
             old (list): the previous selected indices
             new (list): the new selected indices
             """
+            if 0:
+                print(p2.width, p2.height)
+                print(p2.frame_width, p2.frame_height)
+                print(p2.inner_width, p2.inner_height)
+                print(p2.x_range.start, p2.x_range.end, p2.x_scale)
+                print(p2.y_range.start, p2.y_range.end, p2.y_scale)
+
             if len(new)>0:
+                ## Update line
                 site_id = source.data['id2'][new[0]]
                 ts_source.data = dict(dates=dates, var=ts[site_id])
+                
+                ## Update BoxAnnotation
+                ph = p2.inner_height
+                for ba in top_ba:
+                    ba.top = ph
+                    ba.bottom = int(ph/2)
+                for ba in bottom_ba:
+                    ba.top = int(ph/2)
+                    ba.bottom = 0
 
         source.selected.on_change('indices', update_ts)
 
