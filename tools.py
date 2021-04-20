@@ -17,21 +17,29 @@ class SimpleTimer():
     ti('label3')        # print the time difference since the last call
     ti.show()           # print all the previous timing (they are recorded automatically)
     """
-    def __init__(self):
+    def __init__(self, name='timer'):
         self.t0 = timer()
         self.res = []
+        self.name = name
 
     def __call__(self, msg=None):
         if msg is not None:
             dt = timer()-self.t0
-            self.res.append([msg, dt])
+            self.res.append([msg, dt, str(dt).index('.')])
             print(msg, dt)
         self.t0 = timer()
 
     def show(self):
-        print("** Timing summary **")
+        print("** Timing summary for {}**".format(self.name))
+        lmax = 0
+        pmax = 0
+        ## Get some format parameters
         for r in self.res:
-            print("{0} {1}".format(*r))
+            if len(r[0])>lmax: lmax = len(r[0])
+            if r[2]>pmax: pmax = r[2]
+        ## Print summary
+        for r in self.res:
+            print("{0:>{rpad}s} : {1:{lpad}.8f}".format(r[0], r[1], rpad=lmax+1, lpad=pmax+8+1))
 
 def parse_args():
     """
