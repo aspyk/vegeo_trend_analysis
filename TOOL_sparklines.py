@@ -1,5 +1,6 @@
 import numpy as np
-from netCDF4 import Dataset
+#from netCDF4 import Dataset
+import h5py
 import sys, glob, os
 import pathlib
 from datetime import datetime
@@ -173,7 +174,7 @@ class Sparkline():
                 self.figsize = (18, 2)
             self.fig, self.ax = plt.subplots(1, 1, figsize=self.figsize, **kwags)
 
-            if 0:
+            if 1:
                 dmin = self.data_group.gdmin
                 dmax = self.data_group.gdmax
                 yrange = (dmin, dmax)
@@ -391,19 +392,21 @@ class TimeSeries():
     def __init__(self, fname, **kwargs):
         self.fname = fname
         
-        self.hdf = Dataset(fname, 'r', format='NETCDF4')
+        self.hdf = h5py.File(fname, 'r')
         
         for key in kwargs:
             setattr(self, key, kwargs[key])
 
         ## Get dates
-        self.dates = self.hdf.variables['ts_dates'][:].astype(np.float)
+        self.dates = self.hdf['meta/ts_dates'][:].astype(np.float)
         self.dates[self.dates==0.] = np.nan
         self.tmin = np.nanmin(self.dates)
         self.tmax = np.nanmax(self.dates)
 
         # get landval sites names
-        self.point_names = self.hdf.variables['point_names'][:]
+        self.point_names = [i.decode('utf8') for i in self.hdf['meta/point_names'][:]]
+
+
    
     def use_var(self, vname):
         """
@@ -414,7 +417,7 @@ class TimeSeries():
         index is just a counter.
 
         """
-        data = self.hdf.variables[vname][:,0,:]
+        data = self.hdf['vars/'+vname][:,0,:]
         print(data.shape)
    
         #DEBUG: reduce data
@@ -422,18 +425,21 @@ class TimeSeries():
             #data = data[:,:10]
             #self.point_names = self.point_names[:10]
             
-            sites = ['FRENCHMAN_FLAT', 'BELMANIP_00332', 'Egypt#1', 'EL_FARAFRA', 'BELMANIP_00416', 'DOM1']
+            #sites = ['FRENCHMAN_FLAT', 'BELMANIP_00332', 'Egypt#1', 'EL_FARAFRA', 'BELMANIP_00416', 'DOM1']
             #sites = ['FRENCHMAN_FLAT']
             #sites = ['DOM1']
+            sites = ['WORLD']
+
             id_sites = [i for i, j in enumerate(self.point_names) if j in sites]
             data = data[:,id_sites]
             self.point_names = [self.point_names[i] for i in id_sites]
+
 
         ## Use physical data or scale it using Z score
         if not self.b_zscore:
             self.df = pd.DataFrame(data, columns=self.point_names)
         else: # Z score
-            globid = self.hdf.variables['global_id'][:]
+            globid = self.hdf['meta/global_id'][:]
             self.df = pd.DataFrame(data, columns=self.point_names, index=[globid//36, globid%36])
             self.df = self.df.unstack()
             df_zman = (self.df-self.df.mean())/self.df.std() # Compute z-score
@@ -456,7 +462,8 @@ class TimeSeries():
 
 if __name__ == "__main__":
 
-    kwargs = {'b_zscore':True}
+    #kwargs = {'b_zscore':True}
+    kwargs = {'b_zscore':False}
 
     filelist = [i for i in sys.argv if i[-3:] in ['.nc', '.h5']] 
 
