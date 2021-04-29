@@ -157,6 +157,7 @@ def pandas_wrapper(data_test0, pt_names, globid, b_deb):
         plt.imshow(A)
         plt.savefig("heatmap_{}.png".format(suffix))
 
+
     ## Option to print more data from big DataFrame
     #pd.set_option('display.max_rows', None)  
     #pd.set_option('display.max_columns', None)  
@@ -262,6 +263,12 @@ def pandas_wrapper(data_test0, pt_names, globid, b_deb):
     df_mk['sn'] = df_phy['sn']
 
     ti.show()
+
+    n_na = df_phy.isna().sum()['nx']
+    n_tot = len(df_phy.nx)
+    print('> Final result: {}/{} ({:.2f}%) significant sites.'.format(n_tot-n_na, n_tot, 100*(n_tot-n_na)/n_tot))
+    if n_na==n_tot:
+        print('WARNING: Resulting array full of NaN.')
 
     return df_mk.values
 
