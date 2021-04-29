@@ -37,6 +37,7 @@ class TimeSeriesExtractor():
         self.start = product.start_date
         self.end = product.end_date
         self.product = product.name
+        self.sensor = product.sensor
         self.chunks = chunks
         self.hash = product.hash
         self.b_delete = b_delete
@@ -244,7 +245,7 @@ class TimeSeriesExtractor():
                         if len(fl)==1: # Normally there is is only one nc file in each folder
                             ncfile = fl[0]
                             # Check sensor type
-                            if self.chunk.sensor not in ncfile:
+                            if self.sensor not in ncfile:
                                 continue
                         else:
                             print('WARNING: no .nc file found')
@@ -329,6 +330,9 @@ class TimeSeriesExtractor():
             self.df_full['global_id'] = fd 
             #self.df_full = self.df_full.set_index('global_id')
 
+            ## Debug option to output filepath list to csv
+            #self.df_full.to_csv('path_to_file.csv', sep=';')
+            #sys.exit()
         
             ## Loop on these files and yield
             
@@ -608,6 +612,45 @@ class TimeSeriesExtractor():
 
         return prod_chunk
     
+    def rebin(self, a, shape=None, scale=None):
+        """Downsample a 2D numpy array"""
+        if shape is not None:
+            sh = shape[0],a.shape[0]//shape[0],shape[1],a.shape[1]//shape[1]
+        elif scale is not None:
+            sh = a.shape[0]//scale,scale,a.shape[1]//scale,scale
+        else:
+            print('ERROR: need to provide either shape or scale')
+            sys.exit()
+        #return a.reshape(sh).mean(-1).mean(1) 
+        return a.reshape(sh).max(-1).max(1) 
+
+    def extract_snow1(self):
+        #data = self.h5f[var][:]
+
+        qdata = self.h5f['QFLAG']
+        snow_mask = ((qdata[0]>>5)&1)==1
+        snow_sel = self.area[snow_mask]
+        
+        d = {}
+        for v in self.config['var']:
+            #count = np.count_nonzero((qdata>>5)&1) #calculate mean over time
+            #count = self.area[((qdata[0]>>5)&1)==1].sum() # calculate total surface of snow
+            count = snow_sel.sum()
+            d[v] = np.array([count])
+            d[v].reshape((1,-1)) # fake 2D array (1,nb_pts)
+
+        #self.snow_map.set_array(qdata[0])
+        #print(self.snow_map.get_array().max())
+        #self.snow_map = self.ax1.imshow(qdata[0])
+        self.ax1.clear()
+        #self.ax1.imshow(self.rebin(snow_mask, shape=self.avhrr_dim))
+        self.ax1.imshow(self.rebin(snow_mask, scale=4))
+        self.ax1.set_title("{} | {}".format(self.sensor, self.current.datetime.strftime('%Y-%m-%d')))
+    
+        plt.savefig("output_snow/snow_{}_{}.png".format(self.sensor, self.current.global_id))
+
+        return d 
+
     def _write_ts_chunk(self, out_var):
         """
         Write time series of the data
@@ -762,4 +805,82 @@ class TimeSeriesExtractor():
 
         return write_files
     
+
+    def run_snow(self):
+
+        ## Initialize time series with array of nan
+        data_ts = {}
+        for v in self.config['var']:
+            data_ts[v] = np.full([len(self.dseries),1,1], np.nan) # Add fake dimensions to fit the pipeline
+        time_ts = []
+        print('data shape:', data_ts[self.config['var'][0]].shape)
+
+        ## Import pixel area
+        with h5py.File('output_snow/pixel_area_{}.h5'.format(self.sensor), 'r') as ahf:
+            self.area = ahf['area'][:]
+            data_dim = ahf['data_dim'][:]
+            nlon = data_dim[1]
+            self.area = np.tile(self.area, (nlon,1)).T
+            #self.area = ahf['area'][:].reshape((1,-1,1)) # add fake dimension
+        
+        ## Initialize interactive plot
+        self.ax1 = plt.subplot(111)
+        self.avhrr_dim = (4200,10800)
+        self.snow_map = self.ax1.imshow(np.zeros(self.avhrr_dim))
+
+        res = [] # debug
+
+        t0 = datetime.now()
+
+        ## Loop on files
+        for f in self.get_product_files():
+            ts = datetime.now()
+            print("####################################################")
+            print("{}/{} - {}".format(f.Index, len(self.dseries), f.datetime))
+            if f.path is not None:
+                print(f.path.name)
+                self.current = f
+                tmp = self.extract_snow1()
+                for v in self.config['var']:
+                    data_ts[v][f.Index] = tmp[v]
+                time_ts.append(f.datetime)
+            else:
+                print ('File not found, moving to next file, assigning NaN to extacted pixel.')
+                time_ts.append(datetime(1970,1,1)) # set timestamp to 0 (=1970-01-01) if no data
+
+            now = datetime.now()
+            print('{} | iteration: {} | elapsed: {}'.format(now, now-ts, now-t0), flush=True)
+
+
+        time_ts = np.array([np.datetime64(d).astype('<M8[s]') for d in time_ts])
+        time_ts = time_ts.astype(np.int64)
+
+        ## Write output data
+        out_var = []
+        gid0 = self.df_full['global_id'].values[0]
+        gid0 = "{}{:02d}".format(1970+gid0//36, gid0%36)
+        gid1 = self.df_full['global_id'].values[-1]
+        gid1 = "{}{:02d}".format(1970+gid1//36, gid1%36)
+        self.write_file = pathlib.Path('output_snow/test_snow_{}_{}_{}.h5'.format(gid0, gid1, self.sensor))
+        for name, data in data_ts.items():
+            out_var.append({'type':np.float, 'name':'vars/'+name, 'data':data})
+        out_var.append({'type':np.int64, 'name':'meta/ts_dates', 'data':time_ts})
+        out_var.append({'type':'S', 'name':'meta/point_names', 'data':np.array(['WORLD'])})
+        out_var.append({'type':np.uint16, 'name':'meta/global_id', 'data':self.df_full['global_id'].values})
+        self._write_ts_chunk(out_var)
+
+        if 0:
+            for name, data in data_ts.items():
+                xnum = time_ts.view('datetime64[s]')
+
+                plt.plot(xnum, data.ravel())
+                plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
+                #plt.gca().xaxis.set_major_locator(mdates.MonthLocator())
+                plt.gcf().autofmt_xdate()
+                plt.grid()
+                plt.savefig('output_snow/test_snow_{}.png'.format(name))
+
+        del data_ts       
+
+        return [self.write_file]
 

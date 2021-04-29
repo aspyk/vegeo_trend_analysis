@@ -219,6 +219,7 @@ class Main():
                 list_args = [prod, prod.chunks, self.yfile, self.args.delete_cache]
                 extractor = time_series_reader.TimeSeriesExtractor(*list_args)
                 cache = extractor.run()
+                #cache = extractor.run_snow()
                 cache_files += cache
                 print("cache files:")
                 for c in cache_files:
