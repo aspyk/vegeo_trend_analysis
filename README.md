@@ -3,8 +3,8 @@
 ## Setup
 ```
 #git clone https://github.com/aspyk/vegeo_trend_analysis
-# Directly clone the dev branch
-git clone --single-branch --branch feature/genericreader https://github.com/aspyk/vegeo_trend_analysis
+# Clone the main branch
+git clone --single-branch --branch main https://github.com/aspyk/vegeo_trend_analysis
 cd vegeo_trend_analysis/
 ./run_setup.sh
 ```
