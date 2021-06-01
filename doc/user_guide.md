@@ -8,11 +8,24 @@ title: C3S Quality Monitoring Tool user guide
 
 # C3S Quality Monitoring Tool | User Guide
 
+## Table of contents
+1. [Objective of the tool](#Objectiveofthetool)
+1. [Usage](#usage)
+    1. [Setup](#setup)
+    1. [Manual run](#manualrun)
+    1. [Automatic run](#automaticrun)
+1. [Overview of the pipeline](#overviewofthepipeline)
+
+Some introduction text, formatted in heading 2 style
+
+<a name="objectiveofthetool"></a>
 ## Objective of the tool
 The objective of the tool is to compute albedo, LAI and FAPAR trends based on Mann Kendall test on copernicus v2 data. This tool will used about every 6 months in order to update the trend.
 
+<a name="usage"></a>
 ## Usage
 
+<a name="setup"></a>
 ### Setup
 
 #### Clone and fortran compilation
@@ -30,6 +43,7 @@ pytest test.py -k "S3_extract_all"
 ```
 
 
+<a name="manualrun"></a>
 ### Manual run
 A manual run is a run where specific time range, sensor and product are given by the user in a command line.
 ```
@@ -51,6 +65,7 @@ With:
 
 
 
+<a name="automaticrun"></a>
 ### Automatic run
 The automatic run can be launch with a single shorter command. The run can loop over:
 - the whole available time range, that is from 1981 to the date of the run.
@@ -85,6 +100,7 @@ err_20210326_094724.log
 ```
 
 
+<a name="overviewofthepipeline"></a>
 ## Overview of the pipeline
 The structure of the tool is composed of a main core pipeline running on a single product, this pipeline looping then on a list of desired products products.
 
