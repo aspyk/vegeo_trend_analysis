@@ -16,9 +16,9 @@ The objective of the tool is to compute albedo, LAI and FAPAR trends based on Ma
 ### Setup
 
 #### Clone and fortran compilation
+Clone the `dev` version:
 ```properties
-### TO BE MODIFIED AFTER MERGING, SHOULD POINT TO A TAGGED VERSION
-git clone --single-branch --branch feature/genericreader https://github.com/aspyk/vegeo_trend_analysis
+git clone --single-branch --branch dev https://github.com/aspyk/vegeo_trend_analysis
 cd vegeo_trend_analysis/
 ./run_setup.sh
 ```
@@ -46,8 +46,8 @@ With:
 - -i INPUT : input type and parameter(s), use the format `<type>:<param1>,<param2>...`. The appropriate input for quality monitoring on LANDVAL sites is `latloncsv:<path_to_csv_file>` but the shortcut option `latloncsv:config` allow to read the input csv file path from the YAML config file.
 - -a ACTION : whitespace separated list of possible actions in `{extract,merge,trend,plot}`
 - -c CONFIG : path to the YAML config file.
-- [-d] DELETE_CACHE : option to force overwriting of the cache files and reprocess data.
-- [-g ] DEBUG : debug option, read only a small subset of all the LANDVAL sites. User have to modify this list in `main.py` file.
+- [-f] FORCE_NEW_CACHE : option to force overwriting of the cache files and reprocess data.
+- [-d ] DEBUG : debug option, read only a small subset of all the LANDVAL sites. User have to modify this list in `main.py` file.
 
 
 
@@ -274,7 +274,7 @@ To get directly the 4x4 matrix:
  [6689 6726 6742 6724]]
 ```
 
-Then, all of these matrices are aggregated in the `_get_c3s_albedo_points` method of the `TimeSeriesExtractor` class in the `time_series_reader.py` file.
+Then, all of these matrices are aggregated in the `_get_c3s_albedo_points` or `_get_c3s_lai_fapar_points` method of the `TimeSeriesExtractor` class in the `time_series_reader.py` file.
 
 The dimension of the output of this extraction will be as said above a `(number_of_time_slot, number_of_sites)` array.
 
@@ -397,6 +397,17 @@ Note that this case has been hardcoded in the main file `main_loop.py` only for 
   <img src="./img/full_call_graph.png" alt="call_graph.png"/>
   <figcaption>Call graph of the code with python, input and output files.</figcaption>
 </figure>
+
+
+## FAQ
+
+- How to change output paths ?
+You can change the output paths in the last section of the YAML config file.
+
+- How to change the QFLAG filtering ?
+Aggregation are done in the `_get_c3s_albedo_points` or `_get_c3s_lai_fapar_points` method (depending of the product) of the `TimeSeriesExtractor` class in the `time_series_reader.py` file. Note that you may implement your own filtering method and call it in the `extract_product` method as the two previous ones.
+
+
 
 
 ## References

@@ -469,9 +469,13 @@ class TimeSeriesExtractor():
  
     def _get_c3s_lai_fapar_points(self):
 
-        q_chunk = self._extract_points('QFLAG', np.uint8)
+        flag_layer = 'q'
+        flag_layer = 'r'
 
-        #q_chunk = self._extract_points('retrieval_flag', np.uint32)
+        if flag_layer=='q':
+            q_chunk = self._extract_points('QFLAG', np.uint8)
+        elif flag_layer=='r':
+            q_chunk = self._extract_points('retrieval_flag', np.uint32)
         
         d = {}
         for v in self.config['var']:
@@ -494,12 +498,12 @@ class TimeSeriesExtractor():
             prod_chunk[ (prod_chunk<0) | (prod_chunk>65534) ] = discard
             if b_print_sel: self._count_val('data range', prod_chunk, discard)
             if b_print_sel: print(np.vectorize(np.binary_repr)(q_chunk, width=8))
-            if 1: # if qflag
+            if flag_layer=='q': # if qflag
                 prod_chunk[ ~((q_chunk & 0b11) == 0b01) ] = discard # if bit 1 and 0 are not land (= 01) set np.nan
                 if b_print_sel: self._count_val('land', prod_chunk, discard)
                 prod_chunk[ ((q_chunk >> 7) & 1) == 1 ] = discard # if bit 7 is set 
                 if b_print_sel: self._count_val('algo failed', prod_chunk, discard)
-            else: # if retrieval_flag
+            elif flag_layer=='r': # if retrieval_flag
                 prod_chunk[ ((q_chunk >> 0) & 1) == 1 ] = discard # if bit 0 is set 
                 if b_print_sel: self._count_val('obs_is_fillvalue', prod_chunk, discard)
                 prod_chunk[ ((q_chunk >> 6) & 1) == 1 ] = discard # if bit 6 is set 
@@ -706,7 +710,7 @@ class TimeSeriesExtractor():
 
         if not self.b_delete:
             if write_file.is_file():
-                print ('INFO: Cache file {} already exists. Use -d option to overwrite it.'.format(write_file))
+                print ('INFO: Cache file {} already exists. Use -f option to overwrite it.'.format(write_file))
                 return True
 
 

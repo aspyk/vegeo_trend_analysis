@@ -91,9 +91,9 @@ class Main():
                             help='size of master chunks',
                             default=500,
                             type=int)
-        parser.add_argument('-d','--delete_cache', help='Delete cache by overwritting it.', action='store_true')
+        parser.add_argument('-f','--force_new_cache', help='Delete cache by overwritting it.', action='store_true')
         parser.add_argument('-np','--nproc', help='number of process to run the trend analysis', default=1, type=int)
-        parser.add_argument('-g','--debug', help='Some debug option', default=0, type=int)
+        parser.add_argument('-d','--debug', help='Some debug option', default=0, type=int)
         parser.add_argument('-c','--config', help='YAML config file', required=True)
         
         if self.batch_args is None:
@@ -216,7 +216,7 @@ class Main():
             for prod in self.products:
                 print('  Process {0}'.format(prod.name))
                 
-                list_args = [prod, prod.chunks, self.yfile, self.args.delete_cache]
+                list_args = [prod, prod.chunks, self.yfile, self.args.force_new_cache]
                 extractor = time_series_reader.TimeSeriesExtractor(*list_args)
                 cache = extractor.run()
                 #cache = extractor.run_snow()
@@ -249,7 +249,7 @@ class Main():
             for prod in self.products:
                 print('  Process {0}'.format(prod.name))
                 
-                list_args = [prod, self.chunks, self.args.nproc, self.args.delete_cache, self.yfile]
+                list_args = [prod, self.chunks, self.args.nproc, self.args.force_new_cache, self.yfile]
                 compute_trends.main(*list_args)
     
         #------------------------------------------------#

@@ -85,7 +85,7 @@ def main(param):
     ## Run pipeline for each product
     extra = ''
     if param.debug: extra += '--debug 1 '
-    if param.force_cache: extra += '-d '
+    if param.force_new_cache: extra += '-f '
     
     for p in prod:
         args = make_cmd_args(p, extra_flags=extra)
@@ -116,7 +116,7 @@ if __name__=='__main__':
                         required=True)    
     parser.add_argument('-r','--redirect_output', help='Redirect stdout and stderr to file.', action='store_true')
     parser.add_argument('-d','--debug', help='Debug mode: read only some reference sites (names has to be givent in main.py)', action='store_true')
-    parser.add_argument('-f','--force_cache', help='If existing, previous cache files are not read, all the pipeline is reprocessed. Note that previous cache files may be overwritten when new cache files are produced.', action='store_true')
+    parser.add_argument('-f','--force_new_cache', help='If existing, previous cache files are not read, all the pipeline is reprocessed. Note that previous cache files may be overwritten when new cache files are produced.', action='store_true')
     param = parser.parse_args()
     
     if param.redirect_output:
