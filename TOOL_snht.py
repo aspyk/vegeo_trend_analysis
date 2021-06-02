@@ -56,7 +56,6 @@ def snht(xin, return_array=False):
 
     tloc = T.argmax()
 
-    mean = namedtuple('mean',['mu1', 'mu2'])
     mu1 = x[:tloc].mean()
     mu2 = x[tloc:].mean()
 
@@ -66,7 +65,7 @@ def snht(xin, return_array=False):
         Tarr[nan_mask] = np.concatenate([T[:1],T])
         return Tarr, nvalid, nnan
     else:
-        return T.max(), idx[tloc], nvalid, nnan, mean(mu1, mu2)
+        return T.max(), idx[tloc], nvalid, nnan, mu1, mu2
 
 def mc_p_value(n, sim): 
     '''
@@ -236,16 +235,16 @@ def test_recursive_snht():
 
     # Real data
     if 1:
-        albbdh_merged_file = '/data/c3s_vol6/TEST_CNRM/remymf_test/vegeo_trend_analysis/output_extract/c3s_al_bbdh_MERGED/timeseries_198125_202017.h5'
-        #albbdh_merged_file = '/data/c3s_vol6/TEST_CNRM/remymf_test/vegeo_trend_analysis/output_extract/c3s_lai_MERGED/timeseries_198125_202017.h5'
+        #albbdh_merged_file = '/data/c3s_vol6/TEST_CNRM/remymf_test/vegeo_trend_analysis/output_extract/c3s_al_bbdh_MERGED/timeseries_198125_202017.h5'
+        albbdh_merged_file = '/data/c3s_vol6/TEST_CNRM/remymf_test/vegeo_trend_analysis/output_extract/c3s_lai_MERGED/timeseries_198125_202017.h5'
         #albbdh_merged_file = '/data/c3s_vol6/TEST_CNRM/remymf_test/vegeo_trend_analysis/output_extract/c3s_fapar_MERGED/timeseries_198125_202017.h5'
         with h5py.File(albbdh_merged_file, 'r') as hf:
             start = 0
             #al = hf['vars']['AL_DH_BB'][:,0,start:500]
-            #al = hf['vars']['LAI'][:,0,start:500]
+            al = hf['vars']['LAI'][:,0,start:]
             #al = hf['vars']['fAPAR'][:,0,start:50]
             #al = hf['vars']['LAI'][:,0,start:50]
-            al = hf['vars']['AL_DH_BB'][:,0,start:]
+            #al = hf['vars']['AL_DH_BB'][:,0,start:200]
     ## Synthetic data
     else:
         y = [] 
@@ -315,21 +314,26 @@ def test_recursive_snht():
             #col = '#'+''.join(['{:02x}'.format(i) for i in np.round(255*np.array(cmap(random.random())[:3])).astype(int)])
             if 1:
                 #ax1.plot(v['x'], v['y']+v['lvl'], c=next(col_cycle)) # actual data
-                #ax1.plot([v['x'][v['snht'].cp]]*2, [0+v['lvl'], 1+v['lvl']], c='k') # vertical lines
+                #ax1.plot([v['x'][v['snht']['cp']]]*2, [0+v['lvl'], 1+v['lvl']], c='k') # vertical lines
                 #ax1.plot(v['x'], v['y'], c=next(col_cycle)) # actual data
                 #if len(v['child'])>0:
                 if v['status'] in ['valid']:
-                    #break_list.append([v['x'][v['snht'].cp], v['snht'].T, v['lvl']])
-                    #ax1.plot([v['x'][v['snht'].cp]]*2, [0, 1], c='k' ) # vertical lines
-                    ax1.axvline(v['x'][v['snht'].cp], ymin=0.15, ymax=0.85, c='k' ) # vertical lines
-                    #ax1.plot([v['x'][v['snht'].cp]]*2, [0, v['snht'].T/res_dic[0]['snht'].T*np.nanmax(res_dic[0]['y'])], c='k') # vertical lines
+                    #break_list.append([v['x'][v['snht']['cp']], v['snht']['T'], v['lvl']])
+                    #ax1.plot([v['x'][v['snht']['cp']]]*2, [0, 1], c='k' ) # vertical lines
+                    ax1.axvline(v['x'][v['snht']['cp']], ymin=0.15, ymax=0.85, c='k' ) # vertical lines
+                    #ax1.plot([v['x'][v['snht']['cp']]]*2, [0, v['snht']['T']/res_dic[0]['snht']['T']*np.nanmax(res_dic[0]['y'])], c='k') # vertical lines
+                    
+                    ## Add annotations
                     trans = blended_transform_factory(x_transform=ax1.transData, y_transform=ax1.transAxes)
-                    texts_top.append(ax1.annotate('{:.1f}'.format(v['snht'].T),
-                                 xy=(v['x'][v['snht'].cp], 1.),  xycoords=trans,
-                                 xytext=(v['x'][v['snht'].cp], 1.), textcoords=trans, ha='center', va='top', fontsize=8) )
+                    # T value at the top
+                    if 0:
+                        texts_top.append(ax1.annotate('{:.1f}'.format(v['snht']['T']),
+                                     xy=(v['x'][v['snht']['cp']], 1.),  xycoords=trans,
+                                     xytext=(v['x'][v['snht']['cp']], 1.), textcoords=trans, ha='center', va='top', fontsize=10) )
+                    # break level at the botoom
                     texts_bottom.append(ax1.annotate('{:d}'.format(v['lvl']),
-                                 xy=(v['x'][v['snht'].cp], 0.),  xycoords=trans,
-                                 xytext=(v['x'][v['snht'].cp], 0.), textcoords=trans, ha='center', fontsize=8) )
+                                 xy=(v['x'][v['snht']['cp']], 0.),  xycoords=trans,
+                                 xytext=(v['x'][v['snht']['cp']], 0.), textcoords=trans, ha='center', fontsize=10) )
                 #if v['name']=='0':
                     #ax1.plot(v['x'], v['y'], c='k', ls=':') # actual data
                     #ax1.plot(v['x'], v['y'], c='0.7') # actual data
@@ -403,21 +407,21 @@ def recursive_snht_dict(x, y, parent='0', max_lvl=3, nan_threshold=0.3, nb_year_
     snht = res[parent]['snht']
     #print(snht)
     #print(snht.h, len(y), (~np.isnan(y)).sum()/len(y))
-    if (snht.h):
-        if 30<snht.cp<len(y)-30:
+    if (snht['h']):
+        if 30 < snht['cp'] < len(y)-30:
             res[parent]['status'] = 'valid'
-            xa = x[:snht.cp]
-            xb = x[snht.cp:]
-            ya = y[:snht.cp]
-            yb = y[snht.cp:]
+            xa = x[:snht['cp']]
+            xb = x[snht['cp']:]
+            ya = y[:snht['cp']]
+            yb = y[snht['cp']:]
             res = {**res,
                    **recursive_snht_dict(xa, ya, parent=parent+'>'+str(lvl+1)+'a', max_lvl=max_lvl, nan_threshold=nan_threshold, nb_year_min=nb_year_min, alpha=alpha),
                    **recursive_snht_dict(xb, yb, parent=parent+'>'+str(lvl+1)+'b', max_lvl=max_lvl, nan_threshold=nan_threshold, nb_year_min=nb_year_min, alpha=alpha) }
         else:
-            print('Stop at node {} because snht location was too close of the start/end  ( snht.cp={:d} )'.format(name, snht.cp))
+            print('Stop at node {} because break location is too close of the sides ( cp={:d} )'.format(name, snht['cp']))
             res[parent]['status'] = 'stop:side'
     else:
-        print('Stop at node {} because snht test not significant ( p={:.3f} for p_max={})'.format(name, snht.p, alpha))
+        print('Stop at node {} because snht test not significant ( p={:.3f} for p_max={})'.format(name, snht['p'], alpha))
         res[parent]['status'] = 'stop:pval'
     return res
 
@@ -454,7 +458,7 @@ def recursive_snht(x, y, ax, parent='root', max_lvl=3, nan_threshold=0.3, nb_yea
 
 def fast_snht_test(x, alpha=0.05):
     x = np.asarray(x)
-    tmax, tloc, nvalid, nnan, mu = snht(x, False) 
+    tmax, tloc, nvalid, nnan, mu1, mu2 = snht(x, False) 
     stat = tmax
     pval = compute_pval_from_cache_scalar(stat, int(nvalid))
     if pval<alpha:
@@ -463,8 +467,10 @@ def fast_snht_test(x, alpha=0.05):
         h = False
     
     fast_SNHT_Test = namedtuple('fast_SNHT_Test', ['h', 'cp', 'p', 'T', 'avg'])
+    res_dic = {'h':h, 'cp':int(tloc), 'p':pval, 'T':tmax, 'mu1':mu1, 'mu2':mu2}
     
-    return fast_SNHT_Test(h, int(tloc), pval, tmax, mu) 
+    #return fast_SNHT_Test(h, int(tloc), pval, tmax, mu) 
+    return res_dic
 
 def main():
     #test_fake_data()
