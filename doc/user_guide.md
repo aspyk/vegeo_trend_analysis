@@ -9,14 +9,23 @@ title: C3S Quality Monitoring Tool user guide
 # C3S Quality Monitoring Tool | User Guide
 
 ## Table of contents
-1. [Objective of the tool](#Objectiveofthetool)
+1. [Objective of the tool](#objectiveofthetool)
 1. [Usage](#usage)
     1. [Setup](#setup)
     1. [Manual run](#manualrun)
     1. [Automatic run](#automaticrun)
 1. [Overview of the pipeline](#overviewofthepipeline)
-
-Some introduction text, formatted in heading 2 style
+    1. [Inputs](#inputs)
+    1. [Outputs](#outputs)
+    1. [Core pipeline](#corepipeline)
+1. [Description of the modules](#descriptionofthemodules)
+    1. [Reading module](#readingmodule)
+    1. [Merging module](#mergingmodule)
+    1. [Trend module](#trendmodule)
+    1. [Plotting module](#plottingmodule)
+    1. [Summary of the module structure](#summaryofthemodulestructure)
+1. [FAQ](#faq)
+1. [References](#references)
 
 <a name="objectiveofthetool"></a>
 ## Objective of the tool
@@ -104,6 +113,7 @@ err_20210326_094724.log
 ## Overview of the pipeline
 The structure of the tool is composed of a main core pipeline running on a single product, this pipeline looping then on a list of desired products products.
 
+<a name="inputs"></a>
 ### Inputs
 #### C3S data
 C3S data are available since 1981 and continue today. Three new global maps are given each month (every ~10 days), giving a total of 36 files for each full year. 
@@ -192,6 +202,7 @@ ref_site_coor:
 ```
 `output_path` section group the folders where cache files and output images and CSV should be written. Each module should always writes its outputs in separate folders to avoid unexpected conflicts.
 
+<a name="outputs"></a>
 ### Outputs
 Outputs of the code are of three types:
 - cache files
@@ -211,6 +222,7 @@ PNG images are written at the end of the last module to plot the result of the t
 
 CSV files are written at the same time as the PNG files and simply export numerical values use to plot the scatter plot as plain text to be used for further analysis if necessary. The format is the same as for the CSV input file containing the LANDVAL sites, new columns are just added to give the statistical parameters computed previously.
 
+<a name="corepipeline"></a>
 ### Core pipeline
 The core pipeline is made up of 4 modules communicating together only using cache files. These modules are as follow:
 - reading module
@@ -225,8 +237,10 @@ The following section is dedicated to their detailed description. A flowchart su
   <figcaption>Flowchart of all the modules with their inputs and outputs.</figcaption>
 </figure>
 
+<a name="descriptionofthemodules"></a>
 ## Description of the modules
 
+<a name="readingmodule"></a>
 ### Reading module
 
 One-dimensional time series are required for the Mann-Kendall test but inputs are using several formats and resolution (GPS coordinates for LANDAVAL sites and 4KM, 1KM and 300M resolutions for C3S datasets). Then to be able to use the whole time series for statistics computation a first aggregating pre-processing step is required to get uniform data. For that the reading module can be divided in two part: first the extraction part, then the aggregation part.
@@ -319,6 +333,7 @@ Two groups `vars` and `meta` are written in the h5 file.
 
 The name of the cache file is finally given replacing the two placeholders in the following template: `timeseries_<start_dekad>_<end_dekad>.h5`. Dekads are described here with a series of 6 digits using the format `YYYYKK`, `YYYY` being the year with 4 digits and `KK` being the dekad index in the year, between 0 and 35. As an example the cache file for the time range going from 01-01-2000 to 31-12-2001 would be named like this: `timeseries_200000_200135.h5`.
 
+<a name="mergingmodule"></a>
 ### Merging module
 
 Merging module allow to merge several cache files extracted from the previous part. It does it automatically in the pipeline since one cache file is created for each sensor, but the module could *a priori* merge any cache file from the extracted part.
@@ -331,6 +346,7 @@ It uses the `global_id` array to merge files to avoid problems of dates manageme
 #### Output format
 The output format is exactly the same as in the extract module, see above for the details.
 
+<a name="trendmodule"></a>
 ### Trend module
 
 The trend module includes the Mann-Kendall test and the Theil-Sen estimator.
@@ -383,6 +399,7 @@ Where all the results are given for each LANDVAL sites using the same order as i
 - `slope` : slope computed on the physical scaled (original) time series
 - `zval` : Mann-Kendall statistics  
 
+<a name="plottingmodule"></a>
 ### Plotting module
 
 Plotting module generates scatter plot on global map to display the trend results. Several maps are created for each of the 4 output (`len`, `pval`, `slope`, `zval`) of the trend algorithm. The scatter plot shows the points at the LANDVAL sites location colored by these variables.
@@ -396,6 +413,7 @@ Nothing specific here, simple plotting function.
 
 #### Output format
 
+<a name="summaryofthemodulestructure"></a>
 ### Summary of the module structure
 
 <figure style="text-align:center">
@@ -415,6 +433,7 @@ Note that this case has been hardcoded in the main file `main_loop.py` only for 
 </figure>
 
 
+<a name="faq"></a>
 ## FAQ
 
 - How to change output paths ?
@@ -426,6 +445,7 @@ Aggregation are done in the `_get_c3s_albedo_points` or `_get_c3s_lai_fapar_poin
 
 
 
+<a name="references"></a>
 ## References
 
 - Gilbert, R.O. 1987. Statistical methods for environmental pollution monitoring. New York: Van Nostrand Reinhold Company.
