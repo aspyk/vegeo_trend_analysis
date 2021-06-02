@@ -437,10 +437,12 @@ Note that this case has been hardcoded in the main file `main_loop.py` only for 
 ## FAQ
 
 - How to change output paths ?
-You can change the output paths in the last section of the YAML config file.
+
+You can change the output paths in the last section of the YAML config file (`config_vito.yml` by default here)
 
 - How to change the QFLAG filtering ?
-Aggregation are done in the `_get_c3s_albedo_points` or `_get_c3s_lai_fapar_points` method (depending of the product) of the `TimeSeriesExtractor` class in the `time_series_reader.py` file. Note that you may implement your own filtering method and call it in the `extract_product` method as the two previous ones.
+
+Aggregation are done in the `_get_c3s_albedo_points()` or `_get_c3s_lai_fapar_points()` method (depending on the product) of the `TimeSeriesExtractor` class in the `time_series_reader.py` file. Note that you may implement your own filtering method and call it in the `extract_product()` method as it is done for the two previous ones.
 
 
 
