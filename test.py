@@ -12,13 +12,13 @@ def run_test(n):
     test_args = []
 
     # Quick run to check the extraction (5 points extract, merge)
-    test_args.append("-t0 1981-09-01 -t1 1981-09-30 -i latloncsv:config -p c3s_al_bbdh_AVHRR -a extract merge -d --debug 1 --config config_vito.yml".split())
+    test_args.append("-t0 1981-09-01 -t1 1981-09-30 -i latloncsv:config -p c3s_al_bbdh_AVHRR -a extract merge -f --debug 1 --config config_vito.yml".split())
     
     # Quick run to check the pipeline (previous + plot)
-    test_args.append("-t0 1981-01-01 -t1 1983-12-31 -i latloncsv:config -p c3s_al_bbdh_AVHRR -a extract merge trend plot -d --debug 1 --config config_vito.yml".split())
+    test_args.append("-t0 1981-01-01 -t1 1983-12-31 -i latloncsv:config -p c3s_al_bbdh_AVHRR -a extract merge trend plot -f --debug 1 --config config_vito.yml".split())
 
     # Quick run to check the pipeline (previous + all points)
-    test_args.append("-t0 1981-01-01 -t1 1983-12-31 -i latloncsv:config -p c3s_al_bbdh_AVHRR -a extract merge trend plot -d --config config_vito.yml".split())
+    test_args.append("-t0 1981-01-01 -t1 1983-12-31 -i latloncsv:config -p c3s_al_bbdh_AVHRR -a extract merge trend plot -f --config config_vito.yml".split())
 
     # S3 with 5 points
     test_args.append("-t0 2018-07-01 -t1 2018-07-31 -i latloncsv:config -p c3s_al_bbdh_SENTINEL3 -a extract --debug 1 --config config_vito.yml".split())
