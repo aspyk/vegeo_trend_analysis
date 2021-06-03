@@ -12,8 +12,8 @@ title: C3S Quality Monitoring Tool user guide
 1. [Objective of the tool](#objectiveofthetool)
 1. [Usage](#usage)
     1. [Setup](#setup)
-    1. [Manual run](#manualrun)
     1. [Automatic run](#automaticrun)
+    1. [Manual run](#manualrun)
 1. [Overview of the pipeline](#overviewofthepipeline)
     1. [Inputs](#inputs)
     1. [Outputs](#outputs)
@@ -51,29 +51,6 @@ pytest test.py -k "AVHRR_plot_all"
 pytest test.py -k "S3_extract_all"
 ```
 
-
-<a name="manualrun"></a>
-### Manual run
-A manual run is a run where specific time range, sensor and product are given by the user in a command line.
-```
-python main.py -t0 <start_date> -t1 <end_date> -i <type_of_input> -p <product_tag> -a <action> --config <config_file_path> [-d] [--debug 1]
-```
-Example:
-```
-python main.py -t0 1981-01-01 -t1 2020-12-31 -i latloncsv:config -p c3s_al_bbdh_AVHRR c3s_al_bbdh_VGT c3s_al_bbdh_PROBAV -a extract merge trend plot -d --config config_vito.yml
-```
-With:
- - -t0 START_DATE : start date in iso format `YYYY-MM-DD`.
- - -t1 END_DATE : end date in iso format `YYYY-MM-DD`.
- - -p PRODUCT_TAG : whitespace separated list of tag(s) using the `c3s_<product>_<sensor>` format. `product` can be in `{al_bbdh,al_bbbh,al_spdh,al_spbh,lai,fapar}` and `sensor` in `{AVHRR,VGT,PROBAV,SENTINEL3}`.
-- -i INPUT : input type and parameter(s), use the format `<type>:<param1>,<param2>...`. The appropriate input for quality monitoring on LANDVAL sites is `latloncsv:<path_to_csv_file>` but the shortcut option `latloncsv:config` allow to read the input csv file path from the YAML config file.
-- -a ACTION : whitespace separated list of possible actions in `{extract,merge,trend,plot}`
-- -c CONFIG : path to the YAML config file.
-- [-f] FORCE_NEW_CACHE : option to force overwriting of the cache files and reprocess data.
-- [-d ] DEBUG : debug option, read only a small subset of all the LANDVAL sites. User have to modify this list in `main.py` file.
-
-
-
 <a name="automaticrun"></a>
 ### Automatic run
 The automatic run can be launch with a single shorter command. The run can loop over:
@@ -107,6 +84,26 @@ In addition to that, errors are also log in the followings files:
 traceback_20210326_094724.log
 err_20210326_094724.log
 ```
+
+<a name="manualrun"></a>
+### Manual run
+A manual run is a run where specific time range, sensor and product are given by the user in a command line.
+```
+python main.py -t0 <start_date> -t1 <end_date> -i <type_of_input> -p <product_tag> -a <action> --config <config_file_path> [-d] [--debug 1]
+```
+Example:
+```
+python main.py -t0 1981-01-01 -t1 2020-12-31 -i latloncsv:config -p c3s_al_bbdh_AVHRR c3s_al_bbdh_VGT c3s_al_bbdh_PROBAV -a extract merge trend plot -d --config config_vito.yml
+```
+With:
+ - -t0 START_DATE : start date in iso format `YYYY-MM-DD`.
+ - -t1 END_DATE : end date in iso format `YYYY-MM-DD`.
+ - -p PRODUCT_TAG : whitespace separated list of tag(s) using the `c3s_<product>_<sensor>` format. `product` can be in `{al_bbdh,al_bbbh,al_spdh,al_spbh,lai,fapar}` and `sensor` in `{AVHRR,VGT,PROBAV,SENTINEL3}`.
+- -i INPUT : input type and parameter(s), use the format `<type>:<param1>,<param2>...`. The appropriate input for quality monitoring on LANDVAL sites is `latloncsv:<path_to_csv_file>` but the shortcut option `latloncsv:config` allow to read the input csv file path from the YAML config file.
+- -a ACTION : whitespace separated list of possible actions in `{extract,merge,trend,plot}`
+- -c CONFIG : path to the YAML config file.
+- [-f] FORCE_NEW_CACHE : option to force overwriting of the cache files and reprocess data.
+- [-d ] DEBUG : debug option, read only a small subset of all the LANDVAL sites. User have to modify this list in `main.py` file.
 
 
 <a name="overviewofthepipeline"></a>
