@@ -4,10 +4,10 @@ import matplotlib.pyplot as plt
 from matplotlib.transforms import blended_transform_factory
 from adjustText import adjust_text
 import h5py
+import pandas as pd
 from scipy import interpolate
 from scipy import optimize
 from datetime import *
-from collections import namedtuple
 from itertools import cycle
 
 from timeit import default_timer as timer
@@ -240,11 +240,14 @@ def test_recursive_snht():
         #albbdh_merged_file = '/data/c3s_vol6/TEST_CNRM/remymf_test/vegeo_trend_analysis/output_extract/c3s_fapar_MERGED/timeseries_198125_202017.h5'
         with h5py.File(albbdh_merged_file, 'r') as hf:
             start = 0
+            end = 50
             #al = hf['vars']['AL_DH_BB'][:,0,start:500]
-            al = hf['vars']['LAI'][:,0,start:]
+            al = hf['vars']['LAI'][:,0,start:end]
             #al = hf['vars']['fAPAR'][:,0,start:50]
             #al = hf['vars']['LAI'][:,0,start:50]
             #al = hf['vars']['AL_DH_BB'][:,0,start:200]
+
+            point_names = hf['meta']['point_names'][start:end]
     ## Synthetic data
     else:
         y = [] 
@@ -269,7 +272,7 @@ def test_recursive_snht():
             #y = (y-np.nanmin(y))/(np.nanmax(y)-np.nanmin(y)) # normalize
 
             ## Compute snht recursively
-            res_dic = recursive_snht_dict(x, y, parent='0', max_lvl=5, nb_year_min=5)
+            res_dic = recursive_snht_dict(x, y, parent='0.0', max_lvl=5, nb_year_min=5)
             #res_dic = {k:{**res_dic[k],'parent':k.split('>')}}
             # Compute parent and childs
             res_dic_sorted = sorted(res_dic.keys(), key=lambda x:len(x))
@@ -360,8 +363,8 @@ def test_recursive_snht():
                      xytext=(0., 1.), textcoords='axes fraction', verticalalignment='top')
 
         ## use adjust_text library to fix overlapping text
-        adjust_text(texts_top, autoalign='x', expand_text=(1.5,1.2), force_text=(0.5, 0.25), avoid_points=False, va='top')
-        adjust_text(texts_bottom, autoalign='x', expand_text=(1.5,1.2), force_text=(0.5, 0.25), avoid_points=False, va='center')
+        #adjust_text(texts_top, autoalign='x', expand_text=(1.5,1.2), force_text=(0.5, 0.25), avoid_points=False, va='top')
+        #adjust_text(texts_bottom, autoalign='x', expand_text=(1.5,1.2), force_text=(0.5, 0.25), avoid_points=False, va='center')
 
         ax1.get_xaxis().set_ticks([])
         ax1.get_yaxis().set_ticks([])
@@ -369,10 +372,28 @@ def test_recursive_snht():
         plt.savefig('output_recursive_snht/output_snht_{:03d}.png'.format(idy))
         plt.close(fig)
 
+    ## Save a json cache file
     if source=='compute_snht':
         frozen = jsonpickle.encode(break_list)
         with open('break_list.json', 'w') as f:
             f.write(frozen)
+    
+    ## Flatten everything to format for a DataFrame
+    flat_res = []
+    for i in range(len(break_list)):
+        for j in range(len(break_list[i])):
+            if 'snht' in break_list[i][j].keys():
+                flat_res.append({**break_list[i][j], **break_list[i][j]['snht'], 'point_name':point_names[i] })
+                del(flat_res[-1]['snht'])
+            else:
+                flat_res.append({**break_list[i][j], 'point_name':point_names[i] })
+    print(len(flat_res))    
+
+
+    ## Create a dataframe
+    df = pd.DataFrame(flat_res)
+    df = df.set_index(['point_name', 'name'])
+    print(df.drop(columns=['x', 'y']))
 
     sys.exit()
 
@@ -381,42 +402,43 @@ def test_recursive_snht():
     #plt.hist(break_list.T[0], )
     plt.savefig('tmp/snht_hist.png')
 
-
-def recursive_snht_dict(x, y, parent='0', max_lvl=3, nan_threshold=0.3, nb_year_min=5, alpha=0.05):
-    lvl = parent.count('>')
+def recursive_snht_dict(x, y, parent='0', max_lvl=3, nan_threshold=0.3, nb_year_min=5, alpha=0.05, edge_buffer=0):
+    lvl = parent.count('/')
     if lvl==0:
         p = ''
-        name = '0'
+        name = '0.0'
     else:
-        p = parent.split('>')[-2]
-        name = parent.split('>')[-1]
+        p = parent.split('/')[-2]
+        name = parent.split('/')[-1]
     res = {}
+    n_nan = np.isnan(y).sum()/len(y)
+    base = {'x':x, 'y':y, 'lvl':lvl, 'parent':p, 'name':name, 'child':[], 'n_nan':n_nan}
     if len(y)<=36*nb_year_min:
         print('Stop at node {} because data length is too short ({} instead of {} min)'.format(name, len(y), 36*nb_year_min))
-        res[parent] = {'status':'stop:len', 'x':x, 'y':y, 'lvl':lvl, 'parent':p, 'name':name, 'child':[]}
+        res[parent] = {'status':'stop:len', **base}
         return res
-    elif ((np.isnan(y)).sum()/len(y))>=nan_threshold:
-        print('Stop at node {} because too much nan in data ( {:.2f}% instead of {}% max)'.format(name, 100*((np.isnan(y)).sum()/len(y)), 100*nan_threshold))
-        res[parent] = {'status':'stop:nan', 'x':x, 'y':y, 'lvl':lvl, 'parent':p, 'name':name, 'child':[]}
+    elif n_nan>=nan_threshold:
+        print('Stop at node {} because too much nan in data ( {:.2f}% instead of {}% max)'.format(name, 100*n_nan, 100*nan_threshold))
+        res[parent] = {'status':'stop:nan', **base}
         return res
-    elif lvl>=max_lvl:
+    elif lvl>max_lvl:
         print('Stop at node {} because max level has been reach ({} on {} max)'.format(name, lvl, max_lvl))
-        res[parent] = {'status':'stop:lvl', 'x':x, 'y':y, 'lvl':lvl, 'parent':p, 'name':name, 'child':[]}
+        res[parent] = {'status':'stop:lvl', **base}
         return res
-    res[parent] = {'snht':fast_snht_test(y, alpha=alpha), 'x':x, 'y':y, 'lvl':lvl, 'parent':p, 'name':name, 'child':[]}
+    res[parent] = {'snht':fast_snht_test(y, alpha=alpha), **base}
     snht = res[parent]['snht']
     #print(snht)
-    #print(snht.h, len(y), (~np.isnan(y)).sum()/len(y))
     if (snht['h']):
-        if 30 < snht['cp'] < len(y)-30:
+        if edge_buffer < snht['cp'] < len(y)-edge_buffer:
             res[parent]['status'] = 'valid'
             xa = x[:snht['cp']]
             xb = x[snht['cp']:]
             ya = y[:snht['cp']]
             yb = y[snht['cp']:]
+            nloc = int(name.split('.')[-1])
             res = {**res,
-                   **recursive_snht_dict(xa, ya, parent=parent+'>'+str(lvl+1)+'a', max_lvl=max_lvl, nan_threshold=nan_threshold, nb_year_min=nb_year_min, alpha=alpha),
-                   **recursive_snht_dict(xb, yb, parent=parent+'>'+str(lvl+1)+'b', max_lvl=max_lvl, nan_threshold=nan_threshold, nb_year_min=nb_year_min, alpha=alpha) }
+                   **recursive_snht_dict(xa, ya, parent=parent+'/'+str(lvl+1)+'.'+str(nloc*2), max_lvl=max_lvl, nan_threshold=nan_threshold, nb_year_min=nb_year_min, alpha=alpha),
+                   **recursive_snht_dict(xb, yb, parent=parent+'/'+str(lvl+1)+'.'+str(nloc*2+1), max_lvl=max_lvl, nan_threshold=nan_threshold, nb_year_min=nb_year_min, alpha=alpha) }
         else:
             print('Stop at node {} because break location is too close of the sides ( cp={:d} )'.format(name, snht['cp']))
             res[parent]['status'] = 'stop:side'
@@ -466,10 +488,8 @@ def fast_snht_test(x, alpha=0.05):
     else:
         h = False
     
-    fast_SNHT_Test = namedtuple('fast_SNHT_Test', ['h', 'cp', 'p', 'T', 'avg'])
     res_dic = {'h':h, 'cp':int(tloc), 'p':pval, 'T':tmax, 'mu1':mu1, 'mu2':mu2}
     
-    #return fast_SNHT_Test(h, int(tloc), pval, tmax, mu) 
     return res_dic
 
 def main():
