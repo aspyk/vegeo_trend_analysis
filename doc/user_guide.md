@@ -140,6 +140,7 @@ Reference sites are ~700 points located all over the world. This input is given 
 </figure>
 
 
+<a name="yamlconfigfile"></a>
 #### YAML config file
 
 Config file use the [YAML format](https://yaml.org/). The file is divided into several parts. The first one give parameters about C3S data files, that is mainly their path (under the `root` keyword) and the variables to be analyzed (under the `vars` keyword). Others parameters (`source`, `mode`, `freq`) should not be modified in the scope of the actual C3S global datasets available. Note the use of anchors with `<<: &foo` and `<<: *foo` to avoid repeating the same parameters for several datasets. 
@@ -252,6 +253,7 @@ Note that to simplify the reading of the matrices, a second CSV input file has b
 
 TODO: So far this task is performed by the tool `TOOL_compare_grid.py`. The function writing the modified input CSV file should be integrated directly in the main code.   
 
+<a name="aggregation"></a>
 #### Aggregation
 Several tests are then applied on all the extracted pixels to consider them as a valid input for the Mann Kendall test. For the matrix cases, these tests are first applied on each pixel of the 4x4 and 12x12 matrices, and if there is more than 75% of valid pixels in them the final unique value is computed averaging the values of all the valid pixels.
 The tests used to differentiate the pixels are the following:
@@ -435,11 +437,11 @@ Note that this case has been hardcoded in the main file `main_loop.py` only for 
 
 - How to change output paths ?
 
-You can change the output paths in the last section of the YAML config file (`config_vito.yml` by default here)
+You can change the output paths in the last section of the YAML config file (`config_vito.yml` by default here). See more details in this [section](#yamlconfigfile).
 
 - How to change the QFLAG filtering ?
 
-Aggregation are done in the `_get_c3s_albedo_points()` or `_get_c3s_lai_fapar_points()` method (depending on the product) of the `TimeSeriesExtractor` class in the `time_series_reader.py` file. Note that you may implement your own filtering method and call it in the `extract_product()` method as it is done for the two previous ones.
+Aggregation are done in the `_get_c3s_albedo_points()` or `_get_c3s_lai_fapar_points()` method (depending on the product) of the `TimeSeriesExtractor` class in the `time_series_reader.py` file. Note that you may implement your own filtering method and call it in the `extract_product()` method as it is done for the two previous ones. See more details in this [section](#aggregation).
 
 
 
