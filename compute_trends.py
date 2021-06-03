@@ -244,7 +244,9 @@ def pandas_wrapper(data_test0, pt_names, globid, b_deb):
     ### Finally compute Slope only for data with p-value < 0.05
 
     def proc(y):
-        #print(p_test[y.name])
+        n_zero = (y==0.0).sum()
+        print("{:.4f} / {} / {} / {}".format(np.isnan(y).sum()/len(y), np.nanmin(y), np.nanmax(y), n_zero))
+        y[y==0.0] = 1.e-6*np.random.rand(n_zero)
         if not p_test[y.name]:
             if b_deb: print("INFO: p-value > 0.05 for {}".format(y.name))
             return tuple([np.nan]*4)
