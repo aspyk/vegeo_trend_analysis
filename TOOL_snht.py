@@ -9,6 +9,7 @@ from scipy import interpolate
 from scipy import optimize
 from datetime import *
 from itertools import cycle
+import pathlib
 
 from timeit import default_timer as timer
 import os,sys
@@ -16,6 +17,9 @@ import os,sys
 import random
 import pprint
 import jsonpickle
+
+
+#pd.set_option('display.max_rows', 500)
 
 class SimpleTimer():
     def __init__(self):
@@ -65,7 +69,7 @@ def snht(xin, return_array=False):
         Tarr[nan_mask] = np.concatenate([T[:1],T])
         return Tarr, nvalid, nnan
     else:
-        return T.max(), idx[tloc], nvalid, nnan, mu1, mu2
+        return T.max(), idx[tloc], nvalid, nnan, mu1, mu2, ((mu2-mu1)/mu1)*100
 
 def mc_p_value(n, sim): 
     '''
@@ -239,8 +243,8 @@ def test_recursive_snht():
         albbdh_merged_file = '/data/c3s_vol6/TEST_CNRM/remymf_test/vegeo_trend_analysis/output_extract/c3s_lai_MERGED/timeseries_198125_202017.h5'
         #albbdh_merged_file = '/data/c3s_vol6/TEST_CNRM/remymf_test/vegeo_trend_analysis/output_extract/c3s_fapar_MERGED/timeseries_198125_202017.h5'
         with h5py.File(albbdh_merged_file, 'r') as hf:
-            start = 0
-            end = 50
+            start = 190
+            end = 200
             #al = hf['vars']['AL_DH_BB'][:,0,start:500]
             al = hf['vars']['LAI'][:,0,start:end]
             #al = hf['vars']['fAPAR'][:,0,start:50]
@@ -248,6 +252,7 @@ def test_recursive_snht():
             #al = hf['vars']['AL_DH_BB'][:,0,start:200]
 
             point_names = hf['meta']['point_names'][start:end]
+            dates = hf['meta']['ts_dates'][:]
     ## Synthetic data
     else:
         y = [] 
@@ -272,7 +277,7 @@ def test_recursive_snht():
             #y = (y-np.nanmin(y))/(np.nanmax(y)-np.nanmin(y)) # normalize
 
             ## Compute snht recursively
-            res_dic = recursive_snht_dict(x, y, parent='0.0', max_lvl=5, nb_year_min=5)
+            res_dic = recursive_snht_dict(x, y, dates=dates, parent='1.1', max_lvl=3, nb_year_min=5)
             #res_dic = {k:{**res_dic[k],'parent':k.split('>')}}
             # Compute parent and childs
             res_dic_sorted = sorted(res_dic.keys(), key=lambda x:len(x))
@@ -393,7 +398,14 @@ def test_recursive_snht():
     ## Create a dataframe
     df = pd.DataFrame(flat_res)
     df = df.set_index(['point_name', 'name'])
-    print(df.drop(columns=['x', 'y']))
+    df['n_len'] = pd.to_numeric(df['n_len'], downcast='integer')
+    df['bp_date'] = pd.to_datetime(df['bp_date'], unit='s')
+    #df['cp'] = pd.to_numeric(df['cp'], downcast='integer')
+    #print(df.drop(columns=['x', 'y']))
+    print(df.drop(columns=['x', 'y', 'child', 'parent']))
+
+    df = df.drop(columns=['x', 'y', 'child', 'parent'])
+    df.to_csv('res_snht.csv', sep=';')
 
     sys.exit()
 
@@ -402,17 +414,104 @@ def test_recursive_snht():
     #plt.hist(break_list.T[0], )
     plt.savefig('tmp/snht_hist.png')
 
-def recursive_snht_dict(x, y, parent='0', max_lvl=3, nan_threshold=0.3, nb_year_min=5, alpha=0.05, edge_buffer=0):
-    lvl = parent.count('/')
-    if lvl==0:
+def VITO_recursive_snht():
+
+    ## Load data
+    ##----------
+
+    #input_file = '/data/c3s_vol6/TEST_CNRM/remymf_test/vegeo_trend_analysis/output_extract/c3s_al_bbdh_MERGED/timeseries_198125_202017.h5'
+    input_file = '/data/c3s_vol6/TEST_CNRM/remymf_test/vegeo_trend_analysis/output_extract/c3s_lai_MERGED/timeseries_198125_202017.h5'
+    #input_file = '/data/c3s_vol6/TEST_CNRM/remymf_test/vegeo_trend_analysis/output_extract/c3s_fapar_MERGED/timeseries_198125_202017.h5'
+
+    with h5py.File(input_file, 'r') as hf:
+        start = 190
+        end = 200
+        #al = hf['vars']['AL_DH_BB'][:,0,start:500]
+        al = hf['vars']['LAI'][:,0,start:end]
+        #al = hf['vars']['fAPAR'][:,0,start:50]
+        #al = hf['vars']['LAI'][:,0,start:50]
+        #al = hf['vars']['AL_DH_BB'][:,0,start:200]
+
+        point_names = hf['meta']['point_names'][start:end]
+        dates = hf['meta']['ts_dates'][:]
+
+
+    ## Run recursive snht test and store raw results
+    ##----------------------------------------------
+
+    break_list = []
+    
+    for idy_rel,y in enumerate(al.T):
+        idy = idy_rel+start
+        print('---', idy)
+    
+        x = np.arange(len(y))
+
+        #y = (y-np.nanmin(y))/(np.nanmax(y)-np.nanmin(y)) # normalize
+
+        ## Compute snht recursively
+        res_dic = recursive_snht_dict(x, y, dates=dates, parent='1.1', max_lvl=3, nb_year_min=5)
+        #res_dic = {k:{**res_dic[k],'parent':k.split('>')}}
+        # Compute parent and childs
+        res_dic_sorted = sorted(res_dic.keys(), key=lambda x:len(x))
+        res_dic = [res_dic[i] for i in res_dic_sorted]
+
+        ## Compute child
+        for ni in res_dic:
+            for nj in res_dic:
+                if ni['name']==nj['parent']:
+                    ni['child'].append(nj['name'])
+
+        ## print some info
+        for k,v in zip(res_dic_sorted, res_dic):
+            print('{:8} | {:2} | {:2} | {}'.format(k, v['parent'], v['name'], v['child']))
+        
+        break_list.append(res_dic)
+    
+    
+    ## Flatten and format for a DataFrame
+    ##----------------------------------- 
+
+    ## Flatten
+    flat_res = []
+    for i in range(len(break_list)):
+        for j in range(len(break_list[i])):
+            if 'snht' in break_list[i][j].keys():
+                flat_res.append({**break_list[i][j], **break_list[i][j]['snht'], 'point_name':point_names[i] })
+                del(flat_res[-1]['snht'])
+            else:
+                flat_res.append({**break_list[i][j], 'point_name':point_names[i] })
+
+    ## Create a dataframe
+    df = pd.DataFrame(flat_res)
+    df = df.set_index(['point_name', 'name'])
+    df['n_len'] = pd.to_numeric(df['n_len'], downcast='integer')
+    df['bp_date'] = pd.to_datetime(df['bp_date'], unit='s')
+    #print(df.drop(columns=['x', 'y']))
+    print(df.drop(columns=['x', 'y', 'child', 'parent']))
+    
+    ## Drop some colums
+    df = df.drop(columns=['x', 'y', 'child', 'parent'])
+    input_file = pathlib.Path(input_file)
+    output_path = pathlib.Path('./output_snht/') / input_file.parts[-2]
+    # Make output dir if not exists
+    output_path.mkdir(parents=True, exist_ok=True)
+    output_file = output_path / input_file.parts[-1].replace('.h5', '_SNHT_break_test.csv')
+    df.to_csv(output_file, sep=';')
+    print("--- SNHT break test result file saved to:\n{}".format(output_file))
+
+
+def recursive_snht_dict(x, y, dates=None, parent='1.1', max_lvl=3, nan_threshold=0.3, nb_year_min=5, alpha=0.05, edge_buffer=0):
+    lvl = parent.count('/')+1
+    if lvl==1:
         p = ''
-        name = '0.0'
+        name = '1.1'
     else:
         p = parent.split('/')[-2]
         name = parent.split('/')[-1]
     res = {}
     n_nan = np.isnan(y).sum()/len(y)
-    base = {'x':x, 'y':y, 'lvl':lvl, 'parent':p, 'name':name, 'child':[], 'n_nan':n_nan}
+    base = {'x':x, 'y':y, 'lvl':lvl, 'parent':p, 'name':name, 'child':[], 'nan[%]':n_nan*100, 'n_len':len(y)}
     if len(y)<=36*nb_year_min:
         print('Stop at node {} because data length is too short ({} instead of {} min)'.format(name, len(y), 36*nb_year_min))
         res[parent] = {'status':'stop:len', **base}
@@ -431,14 +530,16 @@ def recursive_snht_dict(x, y, parent='0', max_lvl=3, nan_threshold=0.3, nb_year_
     if (snht['h']):
         if edge_buffer < snht['cp'] < len(y)-edge_buffer:
             res[parent]['status'] = 'valid'
+            if dates is not None:
+                res[parent]['snht']['bp_date'] = dates[x[snht['cp']]]
             xa = x[:snht['cp']]
             xb = x[snht['cp']:]
             ya = y[:snht['cp']]
             yb = y[snht['cp']:]
             nloc = int(name.split('.')[-1])
             res = {**res,
-                   **recursive_snht_dict(xa, ya, parent=parent+'/'+str(lvl+1)+'.'+str(nloc*2), max_lvl=max_lvl, nan_threshold=nan_threshold, nb_year_min=nb_year_min, alpha=alpha),
-                   **recursive_snht_dict(xb, yb, parent=parent+'/'+str(lvl+1)+'.'+str(nloc*2+1), max_lvl=max_lvl, nan_threshold=nan_threshold, nb_year_min=nb_year_min, alpha=alpha) }
+                   **recursive_snht_dict(xa, ya, dates=dates, parent=parent+'/'+str(lvl+1)+'.'+str(nloc*2-1), max_lvl=max_lvl, nan_threshold=nan_threshold, nb_year_min=nb_year_min, alpha=alpha),
+                   **recursive_snht_dict(xb, yb, dates=dates, parent=parent+'/'+str(lvl+1)+'.'+str(nloc*2), max_lvl=max_lvl, nan_threshold=nan_threshold, nb_year_min=nb_year_min, alpha=alpha) }
         else:
             print('Stop at node {} because break location is too close of the sides ( cp={:d} )'.format(name, snht['cp']))
             res[parent]['status'] = 'stop:side'
@@ -480,7 +581,7 @@ def recursive_snht(x, y, ax, parent='root', max_lvl=3, nan_threshold=0.3, nb_yea
 
 def fast_snht_test(x, alpha=0.05):
     x = np.asarray(x)
-    tmax, tloc, nvalid, nnan, mu1, mu2 = snht(x, False) 
+    tmax, tloc, nvalid, nnan, mu1, mu2, mag = snht(x, False) 
     stat = tmax
     pval = compute_pval_from_cache_scalar(stat, int(nvalid))
     if pval<alpha:
@@ -488,14 +589,16 @@ def fast_snht_test(x, alpha=0.05):
     else:
         h = False
     
-    res_dic = {'h':h, 'cp':int(tloc), 'p':pval, 'T':tmax, 'mu1':mu1, 'mu2':mu2}
+    res_dic = {'h':h, 'cp':int(tloc), 'p':pval, 'T':tmax, 'mu1':mu1, 'mu2':mu2, 'mag[%]':mag}
     
     return res_dic
 
 def main():
     #test_fake_data()
     #test_real_data()
-    test_recursive_snht()
+    #test_recursive_snht()
+
+    VITO_recursive_snht()
 
 if __name__=='__main__':
     main()
