@@ -1,10 +1,7 @@
 #!/usr/bin/env python3
-
 # -*- coding: utf-8 -*-
-"""
-Created on Wed Sep  4 15:28:50 2019
 
-@author: moparthys
+"""
 to compile fortran code, mk_fortran.f90:
 try first this
 f2py -c mk_fortran.f90 -m mankendall_fortran_repeat_exp2 --fcompiler=gfortran

@@ -58,7 +58,7 @@ def snht(xin, return_array=False):
     nvalid = n
     nnan = len(xin)-n
 
-    tloc = T.argmax()
+    tloc = T.argmax()+1
 
     mu1 = x[:tloc].mean()
     mu2 = x[tloc:].mean()
@@ -419,18 +419,16 @@ def VITO_recursive_snht():
     ## Load data
     ##----------
 
-    #input_file = '/data/c3s_vol6/TEST_CNRM/remymf_test/vegeo_trend_analysis/output_extract/c3s_al_bbdh_MERGED/timeseries_198125_202017.h5'
-    input_file = '/data/c3s_vol6/TEST_CNRM/remymf_test/vegeo_trend_analysis/output_extract/c3s_lai_MERGED/timeseries_198125_202017.h5'
+    input_file = '/data/c3s_vol6/TEST_CNRM/remymf_test/vegeo_trend_analysis/output_extract/c3s_al_bbdh_MERGED/timeseries_198125_202017.h5'
+    #input_file = '/data/c3s_vol6/TEST_CNRM/remymf_test/vegeo_trend_analysis/output_extract/c3s_lai_MERGED/timeseries_198125_202017.h5'
     #input_file = '/data/c3s_vol6/TEST_CNRM/remymf_test/vegeo_trend_analysis/output_extract/c3s_fapar_MERGED/timeseries_198125_202017.h5'
 
     with h5py.File(input_file, 'r') as hf:
         start = 190
         end = 200
-        #al = hf['vars']['AL_DH_BB'][:,0,start:500]
-        al = hf['vars']['LAI'][:,0,start:end]
-        #al = hf['vars']['fAPAR'][:,0,start:50]
-        #al = hf['vars']['LAI'][:,0,start:50]
-        #al = hf['vars']['AL_DH_BB'][:,0,start:200]
+        var = hf['vars']['AL_DH_BB'][:,0,start:end]
+        #var = hf['vars']['LAI'][:,0,start:end]
+        #var = hf['vars']['fAPAR'][:,0,start:end]
 
         point_names = hf['meta']['point_names'][start:end]
         dates = hf['meta']['ts_dates'][:]
@@ -441,17 +439,14 @@ def VITO_recursive_snht():
 
     break_list = []
     
-    for idy_rel,y in enumerate(al.T):
+    for idy_rel,y in enumerate(var.T):
         idy = idy_rel+start
         print('---', idy)
     
         x = np.arange(len(y))
 
-        #y = (y-np.nanmin(y))/(np.nanmax(y)-np.nanmin(y)) # normalize
-
         ## Compute snht recursively
         res_dic = recursive_snht_dict(x, y, dates=dates, parent='1.1', max_lvl=3, nb_year_min=5)
-        #res_dic = {k:{**res_dic[k],'parent':k.split('>')}}
         # Compute parent and childs
         res_dic_sorted = sorted(res_dic.keys(), key=lambda x:len(x))
         res_dic = [res_dic[i] for i in res_dic_sorted]
@@ -487,11 +482,15 @@ def VITO_recursive_snht():
     df = df.set_index(['point_name', 'name'])
     df['n_len'] = pd.to_numeric(df['n_len'], downcast='integer')
     df['bp_date'] = pd.to_datetime(df['bp_date'], unit='s')
+    # Drop some colums
     #print(df.drop(columns=['x', 'y']))
     print(df.drop(columns=['x', 'y', 'child', 'parent']))
-    
-    ## Drop some colums
     df = df.drop(columns=['x', 'y', 'child', 'parent'])
+
+    
+    ## Write output file
+    ##------------------
+
     input_file = pathlib.Path(input_file)
     output_path = pathlib.Path('./output_snht/') / input_file.parts[-2]
     # Make output dir if not exists
@@ -593,12 +592,19 @@ def fast_snht_test(x, alpha=0.05):
     
     return res_dic
 
+def debug_func():
+    x = np.array([1,1,1,2,2,2])
+    res = fast_snht_test(x)
+    print(res)
+
 def main():
     #test_fake_data()
     #test_real_data()
     #test_recursive_snht()
 
     VITO_recursive_snht()
+
+    #debug_func()
 
 if __name__=='__main__':
     main()
