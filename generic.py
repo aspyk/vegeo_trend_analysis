@@ -93,6 +93,8 @@ class Splitter():
                 #print(col0, col1, row0, row1) 
                 self.list.append(self.__class__(col0, col1, row0, row1, self)) 
 
+
+
 class CoordinatesConverter():
     """
     For a given format, convert a list of lat/lon pairs into :
@@ -121,6 +123,9 @@ class CoordinatesConverter():
         
         self._load_coor_from_csv(sub)
         self._coor_to_indices_c3s()
+
+        if self.sensor=='AVHRR':
+            self.save_avhrr_ref_corner_to_csv()
 
     def _load_coor_from_csv(self, sub=None):
         """
@@ -222,6 +227,41 @@ class CoordinatesConverter():
         site_data = self.get_row_by_name(site_name)
         ilat,ilon = site_data[['ilat', 'ilon']].values[0] # here values return [[xx,yy]]
         return (slice(ilat, ilat+size), slice(ilon, ilon+size))
+
+    def save_avhrr_ref_corner_to_csv(self):
+        """
+        Save as a new csv file the lat/lon coordinate of the top-left corner of
+        the AVHRR pixel containing the initial coor of the landval sites.
+        It will then be used as reference to extract finer grid.
+        """
+
+        ## Compute the offset in AVHRR pixel from center to top left corner (extend in degree / resolution / 2)
+        half_pix_lat = 140 / self.lat_len / 2. 
+        half_pix_lon = 360 / self.lon_len / 2.
+        print(half_pix_lat, half_pix_lon)
+        assert (half_pix_lat == half_pix_lon) # just to test
+
+        ## In C3S file lat and lon are:
+        # lat: [80, 80-2*dlat, ..., -60+2*dlat] (-60 is excluded)
+        # lon: [-180, -180+2*dlon, ..., 180-2*dlon] (180 is excluded)
+        avhrr_lat = np.linspace(80,-60, self.lat_len+1)[:-1]
+        avhrr_lon = np.linspace(-180,180, self.lon_len+1)[:-1]
+        ## Add half pixel to lat and substract half pixel to lon
+        latlon_topleft = np.array([[avhrr_lat[ilat]+half_pix_lat, avhrr_lon[ilon]-half_pix_lon] for ilat,ilon in self.site_coor[['ilat', 'ilon']].values])
+
+        #print(latlon_topleft)
+
+        df_new = self.site_coor.copy()
+
+        df_new['LATITUDE'] = latlon_topleft.T[0]
+        df_new['LONGITUDE'] = latlon_topleft.T[1]
+        df_new = df_new.sort_index()
+        out_csv = self.fpath.replace('.csv', '_avhrr_topleft.csv')
+        df_new.to_csv(out_csv,
+                      columns=['LATITUDE','LONGITUDE','NAME'],
+                      sep=';')
+
+        print("-- Save modified top-left csv file to:", out_csv)
 
 
 class Product():
