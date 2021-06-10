@@ -16,7 +16,6 @@ import os,sys
 import random
 import pprint
 
-
 #pd.set_option('display.max_rows', 500)
 
 class SimpleTimer():
@@ -102,6 +101,24 @@ def compute_pval_from_cache_scalar(stats, nval):
     p_val = (cache > stats).sum() / nsim 
     return p_val
 
+def create_mc_cache(nmin=10, nmax=1600, sim=20000):
+    """Compute normal reference for p value"""
+
+    mc_cache = np.empty((nmax-nmin, sim))
+    res_root = []
+    for n in range(nmin, nmax):
+
+        t0 = datetime.now()
+        res = mc_p_value(n, sim)[:,0]
+        print(n, datetime.now()-t0)
+        mc_cache[n-nmin] = res
+
+    print('--- Save h5 file')
+    with h5py.File('tmp_mc_cache_{:d}.h5'.format(sim),'w') as hf:
+        hf['tvalue'] = mc_cache
+        hf['tvalue'].attrs['nmin'] = nmin
+        hf['tvalue'].attrs['nmax'] = nmax
+        hf['tvalue'].attrs['nsim'] = sim
 
 def test_fake_data():
     x = []
@@ -113,12 +130,12 @@ def test_fake_data():
 
     ti = SimpleTimer()
 
-    [snht(x) for i in range(1000)]
+    #[snht(x) for i in range(1000)]
 
     ti('end')
 
-    t, tmax, tmaxloc , nvalid, nnan= snht(x, return_array=True)
-    print(tmax, tmaxloc)
+    #t, tmax, tmaxloc , nvalid, nnan= snht(x, return_array=True)
+    #print(tmax, tmaxloc)
 
     if 1:
         ## Compute normal reference for p value 
@@ -149,7 +166,7 @@ def test_fake_data():
             res_root.append([n, sol.root])
             print(res_root[-1])
 
-        if 0:
+        if 1:
             print('--- Save h5 file')
             with h5py.File('tmp_mc_cache_20k.h5','w') as hf:
                 hf['tvalue'] = mc_cache
@@ -609,12 +626,12 @@ def debug_func():
     print(res)
 
 def main():
-    #test_fake_data()
+    test_fake_data()
     #test_real_data()
     #test_recursive_snht()
 
     #VITO_recursive_snht()
-    VITO_recursive_snht('/data/c3s_vol6/TEST_CNRM/remymf_test/vegeo_trend_analysis/output_extract/c3s_al_bbdh_MERGED/timeseries_198125_202017.h5', 'AL_DH_BB')
+    #VITO_recursive_snht('/data/c3s_vol6/TEST_CNRM/remymf_test/vegeo_trend_analysis/output_extract/c3s_al_bbdh_MERGED/timeseries_198125_202017.h5', 'AL_DH_BB')
 
     #debug_func()
 
