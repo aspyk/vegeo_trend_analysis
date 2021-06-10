@@ -2,7 +2,6 @@ import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.transforms import blended_transform_factory
-from adjustText import adjust_text
 import h5py
 import pandas as pd
 from scipy import interpolate
@@ -16,7 +15,6 @@ import os,sys
 
 import random
 import pprint
-import jsonpickle
 
 
 #pd.set_option('display.max_rows', 500)
@@ -301,6 +299,10 @@ def test_recursive_snht():
             break_list = jsonpickle.decode(frozen)
     
     print('--- Plot graphs...')
+    
+    import jsonpickle
+    from adjustText import adjust_text
+    
     for idy_rel,res_dic in enumerate(break_list):
         idy = idy_rel+start
 
@@ -414,23 +416,32 @@ def test_recursive_snht():
     #plt.hist(break_list.T[0], )
     plt.savefig('tmp/snht_hist.png')
 
-def VITO_recursive_snht():
+def VITO_recursive_snht(cache_file_name, var_name, max_lvl=3, nan_threshold=0.3, nb_year_min=5, alpha=0.05, edge_buffer=0):
+
+    b_deb = 0
 
     ## Load data
     ##----------
-
-    input_file = '/data/c3s_vol6/TEST_CNRM/remymf_test/vegeo_trend_analysis/output_extract/c3s_al_bbdh_MERGED/timeseries_198125_202017.h5'
-    #input_file = '/data/c3s_vol6/TEST_CNRM/remymf_test/vegeo_trend_analysis/output_extract/c3s_lai_MERGED/timeseries_198125_202017.h5'
-    #input_file = '/data/c3s_vol6/TEST_CNRM/remymf_test/vegeo_trend_analysis/output_extract/c3s_fapar_MERGED/timeseries_198125_202017.h5'
+    if b_deb:
+        input_file = '/data/c3s_vol6/TEST_CNRM/remymf_test/vegeo_trend_analysis/output_extract/c3s_al_bbdh_MERGED/timeseries_198125_202017.h5'
+        #input_file = '/data/c3s_vol6/TEST_CNRM/remymf_test/vegeo_trend_analysis/output_extract/c3s_lai_MERGED/timeseries_198125_202017.h5'
+        #input_file = '/data/c3s_vol6/TEST_CNRM/remymf_test/vegeo_trend_analysis/output_extract/c3s_fapar_MERGED/timeseries_198125_202017.h5'
+    else:
+        input_file = cache_file_name
 
     with h5py.File(input_file, 'r') as hf:
-        start = 190
-        end = 200
-        var = hf['vars']['AL_DH_BB'][:,0,start:end]
-        #var = hf['vars']['LAI'][:,0,start:end]
-        #var = hf['vars']['fAPAR'][:,0,start:end]
+        if b_deb:
+            start = 190
+            end = 200
+            var = hf['vars']['AL_DH_BB'][:,0,start:end]
+            #var = hf['vars']['LAI'][:,0,start:end]
+            #var = hf['vars']['fAPAR'][:,0,start:end]
+            point_names = hf['meta']['point_names'][start:end]
+        else:
+            var = hf['vars'][var_name][:,0,:]
+            point_names = [i.decode('utf8') for i in hf['meta']['point_names'][:]]
+            start=0
 
-        point_names = hf['meta']['point_names'][start:end]
         dates = hf['meta']['ts_dates'][:]
 
 
@@ -446,7 +457,7 @@ def VITO_recursive_snht():
         x = np.arange(len(y))
 
         ## Compute snht recursively
-        res_dic = recursive_snht_dict(x, y, dates=dates, parent='1.1', max_lvl=3, nb_year_min=5)
+        res_dic = recursive_snht_dict(x, y, dates=dates, parent='1.1', max_lvl=max_lvl, nan_threshold=nan_threshold, nb_year_min=nb_year_min, alpha=alpha, edge_buffer=edge_buffer)
         # Compute parent and childs
         res_dic_sorted = sorted(res_dic.keys(), key=lambda x:len(x))
         res_dic = [res_dic[i] for i in res_dic_sorted]
@@ -495,7 +506,7 @@ def VITO_recursive_snht():
     output_path = pathlib.Path('./output_snht/') / input_file.parts[-2]
     # Make output dir if not exists
     output_path.mkdir(parents=True, exist_ok=True)
-    output_file = output_path / input_file.parts[-1].replace('.h5', '_SNHT_break_test.csv')
+    output_file = output_path / input_file.parts[-1].replace('.h5', '_SNHT_break_test_{}.csv'.format(var_name))
     df.to_csv(output_file, sep=';')
     print("--- SNHT break test result file saved to:\n{}".format(output_file))
 
@@ -602,7 +613,8 @@ def main():
     #test_real_data()
     #test_recursive_snht()
 
-    VITO_recursive_snht()
+    #VITO_recursive_snht()
+    VITO_recursive_snht('/data/c3s_vol6/TEST_CNRM/remymf_test/vegeo_trend_analysis/output_extract/c3s_al_bbdh_MERGED/timeseries_198125_202017.h5', 'AL_DH_BB')
 
     #debug_func()
 
