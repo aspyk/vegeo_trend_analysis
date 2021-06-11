@@ -19,7 +19,7 @@ class BokehPlot():
         self.app_dir = pathlib.Path(__file__).parent
 
         ## Plot land mask
-        with h5py.File(self.app_dir/'data/c3s_land_mask.h5', 'r') as h:
+        with h5py.File(self.app_dir/'data/c3s_land_mask_4KM.h5', 'r') as h:
             lon = h['lon'][:]
             lat = h['lat'][:]
             self.mask = h['mask'][0,:,:]
@@ -50,7 +50,7 @@ class BokehPlot():
         ##--- Add land mask
 
         # must give a vector of image data for image parameter
-        mask = self.rebin(self.mask, (int(self.mask.shape[0]/20), int(self.mask.shape[1]/20)))
+        mask = self.rebin(self.mask, (int(self.mask.shape[0]/5), int(self.mask.shape[1]/5)))
         #p.image(image=[np.flipud(self.mask[::20,::20])], 
         p.image(image=[np.flipud(mask)], 
                 x=lon[0], y=lat[-1], dw=dw, dh=dh,
