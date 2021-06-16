@@ -45,11 +45,29 @@ class BokehPlot():
         dw = lon[-1]-lon[0]
         dh = lat[0]-lat[-1]
         
+        self.dfs = pd.DataFrame.from_dict(data=dict(LONGITUDE=[], LATITUDE=[], slope=[], id2=[]))
         
         p = figure(plot_width=int(400.*dw/dh), plot_height=400, match_aspect=True,
                    tools="pan,wheel_zoom,box_zoom,tap,reset",
                    output_backend="webgl")
 
+        ##--- Create a modified version of seismic colormap
+
+        from bokeh.models import LinearColorMapper, ColorBar
+        import matplotlib.cm as mcm
+        import matplotlib.colors as mcol
+
+        fcmap = mcm.get_cmap('seismic')
+        cmap_mod = [fcmap(i) for i in np.linspace(0,1,15)]
+        cmap_mod[7] = mcm.get_cmap('RdYlGn')(0.5) # replace white in the middle by the yellow of RdYlGn
+        scmap = mcol.LinearSegmentedColormap.from_list("", cmap_mod) # recreate a colormap
+        ## Extract 256 colors from the new colormap and convert them to hex
+        cmap_mod = [scmap(i) for i in np.linspace(0,1,256)]
+        cmap_mod = ["#%02x%02x%02x" % (int(255*r), int(255*g), int(255*b)) for r, g, b, _ in cmap_mod]
+        ## Make a fake colormapper to start
+        ## based on the previous 256 colors (needed because it does not make linear interpolation between colors)
+        self.sn_max = 0.001
+        color_mapper = LinearColorMapper(palette=cmap_mod, low=-self.sn_max, high=self.sn_max)
 
         ##--- Select CSV file to read
         
@@ -72,13 +90,18 @@ class BokehPlot():
             print(in_var)
             select.disabled = False
             select.options = in_var
+            
+            ## If there is only one variable in the csv, plot it directly
+            if len(in_var)==1:
+                read_data_for_plotting(in_var[0])
+
 
         file_input = FileInput(accept=".csv") # comma separated list if any
         file_input.on_change('value', upload_input_data)
         
         ## Add variable selection
         def select_variable(attr, old, new):
-            pass
+            read_data_for_plotting(new)
 
         select = Select(title="Variable in csv:", disabled=True)
         select.on_change('value', select_variable)
@@ -94,53 +117,34 @@ class BokehPlot():
         p.grid.grid_line_width = 0.5
     
         ##--- Read csv, filter and convert to ColumnDataSource
-        def read_data_for_plotting():
-            var = select.value + '_sn'
+
+        def read_data_for_plotting(var):
+            var = var + '_sn'
             df = pd.read_csv(self.app_dir/'data/tmp_input.csv', sep=';', index_col=0)
             df['id2'] = np.arange(df.shape[0])
             df = df.dropna(subset=[var])
 
-            dfs = df[['LONGITUDE', 'LATITUDE', var, 'id2']]
-            dfs = dfs.rename(columns={var:'var'})
-            ## Create two sources: one to keep all the points and one that will be populated according to slider
-            s_ori = ColumnDataSource(dfs)
-            #source = ColumnDataSource(data=dict(LONGITUDE=[], LATITUDE=[], AL_DH_BB_sn=[], id2=[]))
-            source = ColumnDataSource(dfs)
+            self.dfs = df[['LONGITUDE', 'LATITUDE', var, 'id2']]
+            self.dfs = self.dfs.rename(columns={var:'slope'})
 
-        df = pd.read_csv(self.app_dir/'data/output_plot/C3S_AL_BBDH_19810920_20200630/C3S_AL_BBDH_19810920_20200630.csv', sep=';', index_col=0)
-        df['id2'] = np.arange(df.shape[0])
-        print("df.shape=", df.shape)
-        df = df.dropna(subset=['AL_DH_BB_sn'])
-        print(df)
-        #df = df.drop(df[(df['AL_DH_BB_sn'] ) & (df.score > 20)].index)
-
-        dfs = df[['LONGITUDE', 'LATITUDE', 'AL_DH_BB_sn', 'id2']]
-        ## Create two sources: one to keep all the points and one that will be populated according to slider
-        s_ori = ColumnDataSource(dfs)
-        #source = ColumnDataSource(data=dict(LONGITUDE=[], LATITUDE=[], AL_DH_BB_sn=[], id2=[]))
-        source = ColumnDataSource(dfs)
-
-        ##--- Modify seismic colormap
-
-        from bokeh.models import LinearColorMapper, ColorBar
-        import matplotlib.cm as mcm
-        import matplotlib.colors as mcol
-
-        fcmap = mcm.get_cmap('seismic')
-        cmap_mod = [fcmap(i) for i in np.linspace(0,1,15)]
-        cmap_mod[7] = mcm.get_cmap('RdYlGn')(0.5) # replace white in the middle by the yellow of RdYlGn
-        scmap = mcol.LinearSegmentedColormap.from_list("", cmap_mod) # recreate a colormap
-        ## Extract 256 colors from the new colormap and convert them to hex
-        cmap_mod = [scmap(i) for i in np.linspace(0,1,256)]
-        cmap_mod = ["#%02x%02x%02x" % (int(255*r), int(255*g), int(255*b)) for r, g, b, _ in cmap_mod]
-        ## Make a colormapper based on the previous 256 colors (needed because it does not make linear interpolation between colors)
-        sn_max = np.abs(np.nanmax(df['AL_DH_BB_sn']))
-        color_mapper = LinearColorMapper(palette=cmap_mod, low=-sn_max, high=sn_max)
-
+            source.data = ColumnDataSource.from_df(self.dfs)
+            
+            self.sn_max = np.abs(np.nanmax(self.dfs['slope']))
+            color_mapper.low = -self.sn_max
+            color_mapper.high = self.sn_max
+            
+            slider.end = self.sn_max*1000.
+            slider.step = self.sn_max*1000./20.
+        
+        
         ##--- Add scatter
 
+        ## Create source that will be populated according to slider
+        source = ColumnDataSource(data=dict(LONGITUDE=[], LATITUDE=[], slope=[], id2=[]))
+        #source = ColumnDataSource(dfs)
+
         scatter_renderer = p.scatter(x='LONGITUDE', y='LATITUDE', size=12,
-                                     color={'field': 'AL_DH_BB_sn', 'transform': color_mapper},
+                                     color={'field': 'slope', 'transform': color_mapper},
                                      source=source)
 
         color_bar = ColorBar(color_mapper=color_mapper, label_standoff=12)
@@ -157,12 +161,12 @@ class BokehPlot():
 
         ##--- Add slider
 
-        slider = Slider(start=0.0, end=sn_max*1000., value=0.0, step=sn_max*1000./20., title="Threshold [10e-3]")
+        slider = Slider(start=0.0, end=self.sn_max*1000., value=0.0, step=self.sn_max*1000./20., title="Threshold [10e-3]")
         
         ## Slider Python callback
         def update_scatter(attr, old, new):
             # new = new slider value 
-            source.data = ColumnDataSource.from_df(dfs.loc[np.abs(dfs['AL_DH_BB_sn']) >= 0.001*new ])
+            source.data = ColumnDataSource.from_df(self.dfs.loc[np.abs(self.dfs['slope']) >= 0.001*new ])
 
         slider.on_change('value', update_scatter)
         
@@ -179,7 +183,6 @@ class BokehPlot():
         p2 = figure(plot_width=pw, plot_height=ph,
                    tools="pan,wheel_zoom,box_zoom,reset",
                    output_backend="webgl", x_axis_type="datetime")
-
 
 
         p2.add_tools(
