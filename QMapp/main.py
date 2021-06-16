@@ -3,7 +3,9 @@ import numpy as np
 from bokeh.io import save, curdoc
 from bokeh.plotting import figure
 from bokeh.layouts import column
-from bokeh.models import CustomJS, ColumnDataSource, Slider, HoverTool, TapTool, BoxAnnotation
+from bokeh.models import CustomJS, ColumnDataSource, Slider, HoverTool, TapTool, BoxAnnotation, FileInput, Select
+import base64 # To read the output of the FileInput widget
+
 
 from datetime import datetime
 import h5py
@@ -19,7 +21,7 @@ class BokehPlot():
         self.app_dir = pathlib.Path(__file__).parent
 
         ## Plot land mask
-        with h5py.File(self.app_dir/'data/c3s_land_mask_4KM.h5', 'r') as h:
+        with h5py.File(self.app_dir/'data/c3s_land_mask.h5', 'r') as h:
             lon = h['lon'][:]
             lat = h['lat'][:]
             self.mask = h['mask'][0,:,:]
@@ -36,6 +38,7 @@ class BokehPlot():
         sh = shape[0],a.shape[0]//shape[0],shape[1],a.shape[1]//shape[1]
         return a.reshape(sh).mean(-1).mean(1) 
 
+
     def plot_trends_scatter_bokeh(self):
         lon = self.lon
         lat = self.lat
@@ -46,6 +49,39 @@ class BokehPlot():
         p = figure(plot_width=int(400.*dw/dh), plot_height=400, match_aspect=True,
                    tools="pan,wheel_zoom,box_zoom,tap,reset",
                    output_backend="webgl")
+
+
+        ##--- Select CSV file to read
+        
+        def upload_input_data(attr, old, new):
+            ## Read, decode and save input data to tmp file
+            print("Data upload succeeded")
+            print("file_input.filename=", file_input.filename)
+            data = base64.b64decode(file_input.value).decode('utf8')
+            #print(data)
+            #print(len(data.split('\n')))
+            with open(self.app_dir/'data/tmp_input.csv', 'w') as f:
+                f.write(data)
+            
+            ## Read tmp file and update select widget with available variables
+            df = pd.read_csv(self.app_dir/'data/tmp_input.csv', sep=';', index_col=0)
+            df['id2'] = np.arange(df.shape[0])
+            in_var = [i for i in df.columns if i.endswith('_sn')]
+            df = df.dropna(subset=in_var)
+            in_var = [i.replace('_sn','') for i in in_var]
+            print(in_var)
+            select.disabled = False
+            select.options = in_var
+
+        file_input = FileInput(accept=".csv") # comma separated list if any
+        file_input.on_change('value', upload_input_data)
+        
+        ## Add variable selection
+        def select_variable(attr, old, new):
+            pass
+
+        select = Select(title="Variable in csv:", disabled=True)
+        select.on_change('value', select_variable)
 
         ##--- Add land mask
 
@@ -58,6 +94,18 @@ class BokehPlot():
         p.grid.grid_line_width = 0.5
     
         ##--- Read csv, filter and convert to ColumnDataSource
+        def read_data_for_plotting():
+            var = select.value + '_sn'
+            df = pd.read_csv(self.app_dir/'data/tmp_input.csv', sep=';', index_col=0)
+            df['id2'] = np.arange(df.shape[0])
+            df = df.dropna(subset=[var])
+
+            dfs = df[['LONGITUDE', 'LATITUDE', var, 'id2']]
+            dfs = dfs.rename(columns={var:'var'})
+            ## Create two sources: one to keep all the points and one that will be populated according to slider
+            s_ori = ColumnDataSource(dfs)
+            #source = ColumnDataSource(data=dict(LONGITUDE=[], LATITUDE=[], AL_DH_BB_sn=[], id2=[]))
+            source = ColumnDataSource(dfs)
 
         df = pd.read_csv(self.app_dir/'data/output_plot/C3S_AL_BBDH_19810920_20200630/C3S_AL_BBDH_19810920_20200630.csv', sep=';', index_col=0)
         df['id2'] = np.arange(df.shape[0])
@@ -111,7 +159,7 @@ class BokehPlot():
 
         slider = Slider(start=0.0, end=sn_max*1000., value=0.0, step=sn_max*1000./20., title="Threshold [10e-3]")
         
-        ## Python callback
+        ## Slider Python callback
         def update_scatter(attr, old, new):
             # new = new slider value 
             source.data = ColumnDataSource.from_df(dfs.loc[np.abs(dfs['AL_DH_BB_sn']) >= 0.001*new ])
@@ -222,7 +270,7 @@ class BokehPlot():
 
         ##--- Serve the file
         
-        curdoc().add_root(column(slider, p, p2))
+        curdoc().add_root(column(file_input, select, slider, p, p2))
         curdoc().title = "Quality monitoring"
 
     def test_image(self):
