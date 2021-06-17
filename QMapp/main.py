@@ -7,7 +7,7 @@ from bokeh.models import CustomJS, ColumnDataSource, Slider, HoverTool, TapTool,
 import base64 # To read the output of the FileInput widget
 
 
-from datetime import datetime
+import datetime as dt
 import h5py
 import pandas as pd
 import os,sys
@@ -81,8 +81,14 @@ class BokehPlot():
             with open(self.app_dir/'data/tmp_input.csv', 'w') as f:
                 f.write(data)
             
+            ## Get csv meta data
+            meta = {l.split(':')[0]:l.split(':')[1] for l in data.split('\n') if l.startswith('#')}
+            self.hf = h5py.File(self.app_dir/'data'/meta['#input_extract_cache_file'], 'r')
+            # Get date range from csv file name
+            self.dates = [dt.datetime.strptime(i, '%Y%m%d') for i in file_input.filename.split('.')[0].split('_')[-2:]]
+            
             ## Read tmp file and update select widget with available variables
-            df = pd.read_csv(self.app_dir/'data/tmp_input.csv', sep=';', index_col=0)
+            df = pd.read_csv(self.app_dir/'data/tmp_input.csv', sep=';', index_col=0, comment='#')
             df['id2'] = np.arange(df.shape[0])
             in_var = [i for i in df.columns if i.endswith('_sn')]
             df = df.dropna(subset=in_var)
@@ -90,6 +96,9 @@ class BokehPlot():
             print(in_var)
             select.disabled = False
             select.options = in_var
+            select.value = in_var[0]
+
+
             
             ## If there is only one variable in the csv, plot it directly
             if len(in_var)==1:
@@ -119,8 +128,15 @@ class BokehPlot():
         ##--- Read csv, filter and convert to ColumnDataSource
 
         def read_data_for_plotting(var):
+            ## Get the variable from the input h5 cache file
+            self.ts = self.hf['vars/'+var][:,0,:].T
+            self.dates = self.hf['meta/ts_dates'][:].view('datetime64[s]').tolist()
+            d_init = [d for d in self.dates if d.year != 1970] # Some date are set to 1970 (ie stored as 0 ? to be checked)
+            ts_source.data = dict(dates=d_init, var=np.zeros_like(d_init))
+
+            ## Get data from input csv
             var = var + '_sn'
-            df = pd.read_csv(self.app_dir/'data/tmp_input.csv', sep=';', index_col=0)
+            df = pd.read_csv(self.app_dir/'data/tmp_input.csv', sep=';', index_col=0, comment='#')
             df['id2'] = np.arange(df.shape[0])
             df = df.dropna(subset=[var])
 
@@ -172,11 +188,6 @@ class BokehPlot():
         
         ##--- Add time series of selected point      
         
-        hf = h5py.File(self.app_dir/'data/output_extract/c3s_al_bbdh_MERGED/timeseries_198125_202017.h5', 'r')
-        ts = hf['vars/AL_DH_BB'][:,0,:].T
-        dates = hf['meta/ts_dates'][:].view('datetime64[s]').tolist()
-        #dates = hf['meta/global_id'][:]
-        #dates = 1970+dates//36 + (10*(1+dates%36))/365.
 
         pw = int(400.*dw/dh)
         ph = 200
@@ -195,7 +206,7 @@ class BokehPlot():
         ## Create source and plot it
 
         #ts_source = ColumnDataSource(data=dict(dates=[], var=[]))
-        d_init = [d for d in dates if d.year != 1970]
+        d_init = [dt.datetime(1981,9,20), dt.datetime(2020,6,30)]
         ts_source = ColumnDataSource(data=dict(dates=d_init, var=np.zeros_like(d_init)))
         p2.line(x='dates', y='var', source=ts_source)
         
@@ -212,7 +223,7 @@ class BokehPlot():
         sensor_dates.append(['VGT1',   ('10-04-1998', '31-01-2003')])
         sensor_dates.append(['VGT2',   ('31-01-2003', '31-05-2014')])
         sensor_dates.append(['PROBAV', ('31-10-2013', '30-06-2020')])
-        sensor_dates = [[v[0], [datetime.strptime(i, "%d-%m-%Y") for i in v[1]]] for v in sensor_dates]
+        sensor_dates = [[v[0], [dt.datetime.strptime(i, "%d-%m-%Y") for i in v[1]]] for v in sensor_dates]
 
         import itertools
         from bokeh.palettes import Category10 as palette
@@ -253,7 +264,7 @@ class BokehPlot():
             if len(new)>0:
                 ## Update line
                 site_id = source.data['id2'][new[0]]
-                ts_source.data = dict(dates=dates, var=ts[site_id])
+                ts_source.data = dict(dates=self.dates, var=self.ts[site_id])
                 
                 ## Update BoxAnnotation
                 ph = p2.inner_height
