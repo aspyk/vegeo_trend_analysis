@@ -436,9 +436,11 @@ def plot_trends_scatter(product, chunks, plot_name, config):
             chunks.site_coor[invar+'_'+rvar] = trends[rvar]
     
     csv_path = output_path/'{}.csv'.format(case_name)
-    #with open(csv_path, 'w') as fcsv:
+    ## Open directly a path object
     with csv_path.open('w') as fcsv:
-        fcsv.write('#input_cache_file:{}\n'.format(input_trend_file))
+        # Write some comment before the data
+        fcsv.write('#input_extract_cache_file:{}\n'.format(hf.attrs['input_cache_file']))
+        fcsv.write('#input_trend_cache_file:{}\n'.format(input_trend_file))
         chunks.site_coor.to_csv(fcsv, sep=';')
     print('CSV results saved to:', str(csv_path))
 

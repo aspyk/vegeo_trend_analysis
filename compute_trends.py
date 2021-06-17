@@ -132,6 +132,11 @@ def processInput_trends(subchunk, parent_iteration, child_iteration):
         hf.create_dataset(tsvar+'/slope', data=var_temp_output[:,:,2])
         hf.create_dataset(tsvar+'/len', data=var_temp_output[:,:,3])
 
+        ## Add input cache file 
+        hf.attrs['input_cache_file'] = param.input_file.as_posix()
+        # If version with fixed length is required:
+        #hf.attrs.create('input_cache_file', param.input_file.as_posix(), None, dtype='<S{:d}'.format(len(param.input_file.as_posix())))
+
     hf.close() 
     
     print ('Subchunk {} completed, save to {}'.format(child_iteration, subchunk_fname))
