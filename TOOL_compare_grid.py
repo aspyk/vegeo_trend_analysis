@@ -116,10 +116,11 @@ class Main:
                 #mask2 = h['AL_DH_BB'][0,:,:]
                 print(mask2.shape)
                 plt.imshow(mask2)
-                plt.show()
+                plt.savefig('land_mask.png')
+                #plt.show()
                 sys.exit()
 
-        with h5py.File('c3s_land_mask.h5', mode='w') as h:
+        with h5py.File('c3s_land_mask_4KM.h5', mode='w') as h:
             h.create_dataset('lon', data=lon, compression='gzip')
             h.create_dataset('lat', data=lat, compression='gzip')
             h.create_dataset('mask', data=mask, dtype='bool', compression='gzip')
@@ -205,9 +206,9 @@ if __name__=='__main__':
     m = Main()
     #m.plot_grid(**kwargs) # input args:  f1=<path>:f2=<path>
     
-    #m.extract_land_mask(**kwargs) # input args: f1=<path>
+    m.extract_land_mask(**kwargs) # input args: f1=<path>
     
-    m.plot_extract_coor(**kwargs) # input args:  csvcoorfile, f1, f2
-    m.show()
+    #m.plot_extract_coor(**kwargs) # input args:  csvcoorfile, f1, f2
+    #m.show()
 
 
