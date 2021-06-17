@@ -245,7 +245,9 @@ def pandas_wrapper(data_test0, pt_names, globid, b_deb):
 
     def proc(y):
         n_zero = (y==0.0).sum()
-        print("{:.4f} / {} / {} / {}".format(np.isnan(y).sum()/len(y), np.nanmin(y), np.nanmax(y), n_zero))
+        #print("{:.4f} / {} / {} / {}".format(np.isnan(y).sum()/len(y), np.nanmin(y), np.nanmax(y), n_zero))
+        ## To avoid 0.0 tie that makes the sort algo of median fortran computation stuck in very long loops,
+        ## we add very low fake noise to all 0.0 values to allow the sort algo to perform efficiently.
         y[y==0.0] = 1.e-6*np.random.rand(n_zero)
         if not p_test[y.name]:
             if b_deb: print("INFO: p-value > 0.05 for {}".format(y.name))
