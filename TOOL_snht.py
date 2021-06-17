@@ -2,11 +2,12 @@ import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.transforms import blended_transform_factory
+import matplotlib.ticker as ticker
 import h5py
 import pandas as pd
 from scipy import interpolate
 from scipy import optimize
-from datetime import *
+import datetime
 from itertools import cycle
 import pathlib
 
@@ -68,6 +69,11 @@ def snht(xin, return_array=False):
     else:
         return T.max(), idx[tloc], nvalid, nnan, mu1, mu2, ((mu2-mu1)/mu1)*100
 
+def year_fraction(date):
+    start = datetime.date(date.year, 1, 1).toordinal()
+    year_length = datetime.date(date.year+1, 1, 1).toordinal() - start
+    return date.year + float(date.toordinal() - start) / year_length
+
 def mc_p_value(n, sim): 
     '''
     Monte carlo simulation for p-value calculation
@@ -108,9 +114,9 @@ def create_mc_cache(nmin=10, nmax=1600, sim=20000):
     res_root = []
     for n in range(nmin, nmax):
 
-        t0 = datetime.now()
+        t0 = datetime.datetime.now()
         res = mc_p_value(n, sim)[:,0]
-        print(n, datetime.now()-t0)
+        print(n, datetime.datetime.now()-t0)
         mc_cache[n-nmin] = res
 
     print('--- Save h5 file')
@@ -147,9 +153,9 @@ def test_fake_data():
         res_root = []
         for n in range(nmin, nmax):
 
-            t0 = datetime.now()
+            t0 = datetime.datetime.now()
             res = mc_p_value(n, sim)[:,0]
-            print(n, datetime.now()-t0)
+            print(n, datetime.datetime.now()-t0)
             mc_cache[n-nmin] = res
             continue
 
@@ -218,7 +224,7 @@ def test_real_data():
     
     al = hf['vars']['AL_DH_BB'][:,0,:]
     dates = hf['meta']['ts_dates'][:]
-    dates_formatted = np.array([datetime.fromtimestamp(x).strftime('%Y%m%d') for x in dates])
+    dates_formatted = np.array([datetime.datetime.fromtimestamp(x).strftime('%Y%m%d') for x in dates])
     point_names = hf['meta']['point_names'][:]
 
     ## Return full T array or not
@@ -251,22 +257,31 @@ def test_real_data():
 
 
 def test_recursive_snht():
+    """
+    Usage for plotting:
+    -------------------
+
+    python TOOL_snht.py
+    ./crop_merge.sh
+    python TEST_pptx.py
+    """
 
     # Real data
     if 1:
-        #albbdh_merged_file = '/data/c3s_vol6/TEST_CNRM/remymf_test/vegeo_trend_analysis/output_extract/c3s_al_bbdh_MERGED/timeseries_198125_202017.h5'
-        albbdh_merged_file = '/data/c3s_vol6/TEST_CNRM/remymf_test/vegeo_trend_analysis/output_extract/c3s_lai_MERGED/timeseries_198125_202017.h5'
+        albbdh_merged_file = '/data/c3s_vol6/TEST_CNRM/remymf_test/vegeo_trend_analysis/output_extract/c3s_al_bbdh_MERGED/timeseries_198125_202017.h5'
+        #albbdh_merged_file = '/data/c3s_vol6/TEST_CNRM/remymf_test/vegeo_trend_analysis/output_extract/c3s_lai_MERGED/timeseries_198125_202017.h5'
         #albbdh_merged_file = '/data/c3s_vol6/TEST_CNRM/remymf_test/vegeo_trend_analysis/output_extract/c3s_fapar_MERGED/timeseries_198125_202017.h5'
         with h5py.File(albbdh_merged_file, 'r') as hf:
             start = 190
             end = 200
-            #al = hf['vars']['AL_DH_BB'][:,0,start:500]
-            al = hf['vars']['LAI'][:,0,start:end]
+            al = hf['vars']['AL_DH_BB'][:,0,start:end]
+            #al = hf['vars']['LAI'][:,0,start:end]
             #al = hf['vars']['fAPAR'][:,0,start:50]
             #al = hf['vars']['LAI'][:,0,start:50]
             #al = hf['vars']['AL_DH_BB'][:,0,start:200]
 
             point_names = hf['meta']['point_names'][start:end]
+            point_names = [i.decode('utf8') for i in point_names]
             dates = hf['meta']['ts_dates'][:]
     ## Synthetic data
     else:
@@ -280,6 +295,8 @@ def test_recursive_snht():
     #source = 'cache_file'
     source = 'compute_snht'
 
+
+
     if source=='compute_snht':
         break_list = []
         
@@ -292,7 +309,7 @@ def test_recursive_snht():
             #y = (y-np.nanmin(y))/(np.nanmax(y)-np.nanmin(y)) # normalize
 
             ## Compute snht recursively
-            res_dic = recursive_snht_dict(x, y, dates=dates, parent='1.1', max_lvl=3, nb_year_min=5)
+            res_dic = recursive_snht_dict(x, y, dates=dates, parent='1.1', max_lvl=4, nb_year_min=5)
             #res_dic = {k:{**res_dic[k],'parent':k.split('>')}}
             # Compute parent and childs
             res_dic_sorted = sorted(res_dic.keys(), key=lambda x:len(x))
@@ -313,95 +330,10 @@ def test_recursive_snht():
     elif source=='cache_file': 
         with open('break_list.json', 'r') as f:
             frozen = f.read()
-            break_list = jsonpickle.decode(frozen)
     
-    print('--- Plot graphs...')
+    plot_breaks(break_list, dates, point_names, start)
     
-    import jsonpickle
-    from adjustText import adjust_text
-    
-    for idy_rel,res_dic in enumerate(break_list):
-        idy = idy_rel+start
 
-        ## Plot result
-        #fig, ax1 = plt.subplots()
-        #fig, ax1 = plt.subplots(figsize=(10/2.54, 4/2.54)) 
-        fig, ax1 = plt.subplots(figsize=(15/2.54, 3/2.54)) 
-        #fig, ax1 = plt.subplots(figsize=(200/2.54, 10/2.54)) 
-        colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
-        col_cycle = cycle(colors[:4])
-
-        texts_top = [] # store annotations to apply adjust_text afterwards
-        texts_bottom = [] # store annotations to apply adjust_text afterwards
-
-        #for k,v in res_dic.items():
-        for v in res_dic:
-            col = random.choice(colors)
-            #cmap = matplotlib.cm.get_cmap('hsv')
-            #col = '#'+''.join(['{:02x}'.format(i) for i in np.round(255*np.array(cmap(random.random())[:3])).astype(int)])
-            if 1:
-                #ax1.plot(v['x'], v['y']+v['lvl'], c=next(col_cycle)) # actual data
-                #ax1.plot([v['x'][v['snht']['cp']]]*2, [0+v['lvl'], 1+v['lvl']], c='k') # vertical lines
-                #ax1.plot(v['x'], v['y'], c=next(col_cycle)) # actual data
-                #if len(v['child'])>0:
-                if v['status'] in ['valid']:
-                    #break_list.append([v['x'][v['snht']['cp']], v['snht']['T'], v['lvl']])
-                    #ax1.plot([v['x'][v['snht']['cp']]]*2, [0, 1], c='k' ) # vertical lines
-                    ax1.axvline(v['x'][v['snht']['cp']], ymin=0.15, ymax=0.85, c='k' ) # vertical lines
-                    #ax1.plot([v['x'][v['snht']['cp']]]*2, [0, v['snht']['T']/res_dic[0]['snht']['T']*np.nanmax(res_dic[0]['y'])], c='k') # vertical lines
-                    
-                    ## Add annotations
-                    trans = blended_transform_factory(x_transform=ax1.transData, y_transform=ax1.transAxes)
-                    # T value at the top
-                    if 0:
-                        texts_top.append(ax1.annotate('{:.1f}'.format(v['snht']['T']),
-                                     xy=(v['x'][v['snht']['cp']], 1.),  xycoords=trans,
-                                     xytext=(v['x'][v['snht']['cp']], 1.), textcoords=trans, ha='center', va='top', fontsize=10) )
-                    # break level at the botoom
-                    texts_bottom.append(ax1.annotate('{:d}'.format(v['lvl']),
-                                 xy=(v['x'][v['snht']['cp']], 0.),  xycoords=trans,
-                                 xytext=(v['x'][v['snht']['cp']], 0.), textcoords=trans, ha='center', fontsize=10) )
-                #if v['name']=='0':
-                    #ax1.plot(v['x'], v['y'], c='k', ls=':') # actual data
-                    #ax1.plot(v['x'], v['y'], c='0.7') # actual data
-            if 1:
-                #if len(v['child'])==0:
-                #if v['status'].startswith('stop:'):
-                #if v['status'] in ['stop:lvl', 'stop:pval']:
-                if v['status']=='stop:lvl':
-                    #ax1.plot(v['x'], v['y'], c=next(col_cycle), lw=2) # actual data
-                    ax1.plot(v['x'], v['y'], c='#1f77b4', lw=2) # actual data
-                if v['status']=='stop:pval':
-                    ax1.plot(v['x'], v['y'], c='#ff7f0e', lw=2) # actual data
-                if v['status']=='stop:side':
-                    ax1.plot(v['x'], v['y'], c='#9467bd', lw=2) # actual data
-                if v['status']=='stop:len':
-                    ax1.plot(v['x'], v['y'], c='#2ca02c', ls=':') # actual data
-                if v['status']=='stop:nan':
-                    ax1.plot(v['x'], v['y'], c='#d62728', ls=':') # actual data
-        ax1.annotate('{:.2}'.format(np.nanmin(res_dic[0]['y'])),
-                     xy=(0., 0.),  xycoords='axes fraction',
-                     xytext=(0., 0.), textcoords='axes fraction')
-        ax1.annotate('{:.2}'.format(np.nanmax(res_dic[0]['y'])),
-                     xy=(0., 1.),  xycoords='axes fraction',
-                     xytext=(0., 1.), textcoords='axes fraction', verticalalignment='top')
-
-        ## use adjust_text library to fix overlapping text
-        #adjust_text(texts_top, autoalign='x', expand_text=(1.5,1.2), force_text=(0.5, 0.25), avoid_points=False, va='top')
-        #adjust_text(texts_bottom, autoalign='x', expand_text=(1.5,1.2), force_text=(0.5, 0.25), avoid_points=False, va='center')
-
-        ax1.get_xaxis().set_ticks([])
-        ax1.get_yaxis().set_ticks([])
-        plt.tight_layout()
-        plt.savefig('output_recursive_snht/output_snht_{:03d}.png'.format(idy))
-        plt.close(fig)
-
-    ## Save a json cache file
-    if source=='compute_snht':
-        frozen = jsonpickle.encode(break_list)
-        with open('break_list.json', 'w') as f:
-            f.write(frozen)
-    
     ## Flatten everything to format for a DataFrame
     flat_res = []
     for i in range(len(break_list)):
@@ -423,8 +355,10 @@ def test_recursive_snht():
     #print(df.drop(columns=['x', 'y']))
     print(df.drop(columns=['x', 'y', 'child', 'parent']))
 
+    df.to_pickle('res_snht_withxy.gzip')
     df = df.drop(columns=['x', 'y', 'child', 'parent'])
     df.to_csv('res_snht.csv', sep=';')
+    df.to_pickle('res_snht_light.gzip')
 
     sys.exit()
 
@@ -433,7 +367,101 @@ def test_recursive_snht():
     #plt.hist(break_list.T[0], )
     plt.savefig('tmp/snht_hist.png')
 
-def VITO_recursive_snht(cache_file_name, var_name, max_lvl=3, nan_threshold=0.3, nb_year_min=5, alpha=0.05, edge_buffer=0):
+
+def plot_breaks(break_list, dates, point_names, start, fig_size=(15/2.54, 4/2.54)):
+
+    print('--- Plot graphs...')
+    
+    from adjustText import adjust_text
+    
+    date_lim = [pd.to_datetime(dates[0], unit='s'), pd.to_datetime(dates[-1], unit='s')]
+    year_frac = [year_fraction(d) for d in date_lim]
+
+    for idy_rel,res_dic in enumerate(break_list):
+        idy = idy_rel+start
+
+        ## Plot result
+        #fig, ax1 = plt.subplots()
+        fig, ax1 = plt.subplots(figsize=fig_size) 
+        colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
+        col_cycle = cycle(colors[:4])
+
+        texts_top = [] # store annotations to apply adjust_text afterwards
+        texts_bottom = [] # store annotations to apply adjust_text afterwards
+
+        #for k,v in res_dic.items():
+        for v in res_dic:
+            v['x'] = (year_frac[1]-year_frac[0]) * (v['x']/(len(dates)-1)) + year_frac[0]
+            col = random.choice(colors)
+            if 1:
+                #if len(v['child'])>0:
+                if v['status'] in ['valid']:
+                    #ax1.plot([v['x'][v['snht']['cp']]]*2, [0, 1], c='k' ) # vertical lines
+                    ax1.axvline(v['x'][v['snht']['cp']], ymin=0.15, ymax=0.85, c='k' ) # vertical lines
+                    #ax1.plot([v['x'][v['snht']['cp']]]*2, [0, v['snht']['T']/res_dic[0]['snht']['T']*np.nanmax(res_dic[0]['y'])], c='k') # vertical lines
+                    
+                    ## Add annotations
+                    trans = blended_transform_factory(x_transform=ax1.transData, y_transform=ax1.transAxes)
+                    # T value at the top
+                    if 0:
+                        texts_top.append(ax1.annotate('{:.1f}'.format(v['snht']['T']),
+                                     xy=(v['x'][v['snht']['cp']], 1.),  xycoords=trans,
+                                     xytext=(v['x'][v['snht']['cp']], 1.), textcoords=trans, ha='center', va='top', fontsize=10) )
+                    # break level at the botoom
+                    texts_bottom.append(ax1.annotate('{:d}'.format(v['lvl']),
+                                 xy=(v['x'][v['snht']['cp']], 0.),  xycoords=trans,
+                                 xytext=(v['x'][v['snht']['cp']], 0.), textcoords=trans, ha='center', fontsize=10) )
+
+            if 1:
+                #if len(v['child'])==0:
+                #if v['status'].startswith('stop:'):
+                #if v['status'] in ['stop:lvl', 'stop:pval']:
+                if v['status']=='stop:lvl':
+                    #ax1.plot(v['x'], v['y'], c=next(col_cycle), lw=2) # actual data
+                    ax1.plot(v['x'], v['y'], c='#1f77b4', lw=2) # actual data
+                if v['status']=='stop:pval':
+                    ax1.plot(v['x'], v['y'], c='#ff7f0e', lw=2) # actual data
+                if v['status']=='stop:side':
+                    ax1.plot(v['x'], v['y'], c='#9467bd', lw=2) # actual data
+                if v['status']=='stop:len':
+                    ax1.plot(v['x'], v['y'], c='#2ca02c', ls=':') # actual data
+                if v['status']=='stop:nan':
+                    ax1.plot(v['x'], v['y'], c='#d62728', ls=':') # actual data
+        ax1.annotate('{:.2}'.format(np.nanmin(res_dic[0]['y'])),
+                     xy=(0., 0.),  xycoords='axes fraction',
+                     xytext=(0., 0.), textcoords='axes fraction')
+        ax1.annotate('{:.2}'.format(np.nanmax(res_dic[0]['y'])),
+                     xy=(0., 1.),  xycoords='axes fraction',
+                     xytext=(0., 1.), textcoords='axes fraction', verticalalignment='top')
+        ax1.annotate(point_names[idy_rel],
+                     xy=(0., 1.),  xycoords='axes fraction',
+                     xytext=(0., 1.05), textcoords='axes fraction', verticalalignment='baseline')
+
+        ## use adjust_text library to fix overlapping text
+        #adjust_text(texts_top, autoalign='x', expand_text=(1.5,1.2), force_text=(0.5, 0.25), avoid_points=False, va='top')
+        #adjust_text(texts_bottom, autoalign='x', expand_text=(1.5,1.2), force_text=(0.5, 0.25), avoid_points=False, va='center')
+
+        ## Setup axis
+
+        if 0:
+            ax1.get_xaxis().set_ticks([0, len(dates)-1])
+            #date_ticks = [d.strftime('%Y-%m-%d') for d in date_lim]
+            #ticks = ticker.FuncFormatter(lambda x, pos: '{0:g}'.format(x*scale))
+            #ax1.set_yticklabels(date_ticks)
+            date_ticks = ticker.FuncFormatter(lambda x, pos: pd.to_datetime(dates[int(x)], unit='s').strftime('%Y-%m'))
+            ax1.xaxis.set_major_formatter(date_ticks)
+
+        ax1.get_yaxis().set_ticks([])
+        ax1.set_ylim(0.0,0.8)
+
+        plt.tight_layout()
+        plt.savefig('output_recursive_snht/output_snht_{:03d}.png'.format(idy))
+        plt.close(fig)
+
+
+
+
+def VITO_recursive_snht(cache_file_name, var_name, max_lvl=3, nan_threshold=0.3, nb_year_min=5, alpha=0.05, edge_buffer=0, plot_breaks=True, plot_size=(15/2.54, 4/2.54)):
 
     b_deb = 0
 
@@ -492,6 +520,13 @@ def VITO_recursive_snht(cache_file_name, var_name, max_lvl=3, nan_threshold=0.3,
         break_list.append(res_dic)
     
     
+
+    ## Plot breaks
+    ##----------------------------------- 
+    if plot_breaks:
+        plot_breaks(break_list, dates, point_names, start, fig_size)
+
+
     ## Flatten and format for a DataFrame
     ##----------------------------------- 
 
@@ -510,10 +545,6 @@ def VITO_recursive_snht(cache_file_name, var_name, max_lvl=3, nan_threshold=0.3,
     df = df.set_index(['point_name', 'name'])
     df['n_len'] = pd.to_numeric(df['n_len'], downcast='integer')
     df['bp_date'] = pd.to_datetime(df['bp_date'], unit='s')
-    # Drop some colums
-    #print(df.drop(columns=['x', 'y']))
-    print(df.drop(columns=['x', 'y', 'child', 'parent']))
-    df = df.drop(columns=['x', 'y', 'child', 'parent'])
 
     
     ## Write output file
@@ -523,9 +554,18 @@ def VITO_recursive_snht(cache_file_name, var_name, max_lvl=3, nan_threshold=0.3,
     output_path = pathlib.Path('./output_snht/') / input_file.parts[-2]
     # Make output dir if not exists
     output_path.mkdir(parents=True, exist_ok=True)
-    output_file = output_path / input_file.parts[-1].replace('.h5', '_SNHT_break_test_{}.csv'.format(var_name))
-    df.to_csv(output_file, sep=';')
-    print("--- SNHT break test result file saved to:\n{}".format(output_file))
+    output_csv = output_path / input_file.parts[-1].replace('.h5', '_SNHT_break_test_{}.csv'.format(var_name))
+    output_pickle = output_path / input_file.parts[-1].replace('.h5', '_SNHT_break_test_{}.pickle.gzip'.format(var_name))
+    
+    # Output to pickle with full data
+    df.to_pickle(output_pickle)
+    # Drop some colums for csv
+    #print(df.drop(columns=['x', 'y']))
+    print(df.drop(columns=['x', 'y', 'child', 'parent']))
+    df = df.drop(columns=['x', 'y', 'child', 'parent'])
+    
+    df.to_csv(output_csv, sep=';')
+    print("--- SNHT break test result file saved to:\n{}".format(output_csv))
 
 
 def recursive_snht_dict(x, y, dates=None, parent='1.1', max_lvl=3, nan_threshold=0.3, nb_year_min=5, alpha=0.05, edge_buffer=0):
@@ -626,12 +666,12 @@ def debug_func():
     print(res)
 
 def main():
-    test_fake_data()
+    #test_fake_data()
     #test_real_data()
     #test_recursive_snht()
 
     #VITO_recursive_snht()
-    #VITO_recursive_snht('/data/c3s_vol6/TEST_CNRM/remymf_test/vegeo_trend_analysis/output_extract/c3s_al_bbdh_MERGED/timeseries_198125_202017.h5', 'AL_DH_BB')
+    VITO_recursive_snht('/data/c3s_vol6/TEST_CNRM/remymf_test/vegeo_trend_analysis/output_extract/c3s_al_bbdh_MERGED/timeseries_198125_202017.h5', 'AL_DH_BB', max_lvl=4)
 
     #debug_func()
 
