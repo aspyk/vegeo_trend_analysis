@@ -3,9 +3,9 @@ import numpy as np
 from bokeh.io import save, curdoc
 from bokeh.plotting import figure
 from bokeh.layouts import column
-from bokeh.models import CustomJS, ColumnDataSource, Slider, HoverTool, TapTool, BoxAnnotation, FileInput, Select
-import base64 # To read the output of the FileInput widget
+from bokeh.models import CustomJS, ColumnDataSource, HoverTool, TapTool, BoxAnnotation, FileInput, Select, RangeSlider
 
+import base64 # To read the output of the FileInput widget
 
 import datetime as dt
 import h5py
@@ -45,7 +45,7 @@ class BokehPlot():
         dw = lon[-1]-lon[0]
         dh = lat[0]-lat[-1]
         
-        self.dfs = pd.DataFrame.from_dict(data=dict(LONGITUDE=[], LATITUDE=[], slope=[], id2=[]))
+        self.dfs = pd.DataFrame.from_dict(data=dict(LONGITUDE=[], LATITUDE=[], NAME=[], slope=[], id2=[]))
         
         p = figure(plot_width=int(400.*dw/dh), plot_height=400, match_aspect=True,
                    tools="pan,wheel_zoom,box_zoom,tap,reset",
@@ -140,7 +140,7 @@ class BokehPlot():
             df['id2'] = np.arange(df.shape[0])
             df = df.dropna(subset=[var])
 
-            self.dfs = df[['LONGITUDE', 'LATITUDE', var, 'id2']]
+            self.dfs = df[['LONGITUDE', 'LATITUDE', 'NAME', var, 'id2']]
             self.dfs = self.dfs.rename(columns={var:'slope'})
 
             source.data = ColumnDataSource.from_df(self.dfs)
@@ -151,12 +151,13 @@ class BokehPlot():
             
             slider.end = self.sn_max*1000.
             slider.step = self.sn_max*1000./20.
+            slider.value = (0.0, self.sn_max*1000.)
         
         
         ##--- Add scatter
 
         ## Create source that will be populated according to slider
-        source = ColumnDataSource(data=dict(LONGITUDE=[], LATITUDE=[], slope=[], id2=[]))
+        source = ColumnDataSource(data=dict(LONGITUDE=[], LATITUDE=[], NAME=[], slope=[], id2=[]))
         #source = ColumnDataSource(dfs)
 
         scatter_renderer = p.scatter(x='LONGITUDE', y='LATITUDE', size=12,
@@ -177,12 +178,13 @@ class BokehPlot():
 
         ##--- Add slider
 
-        slider = Slider(start=0.0, end=self.sn_max*1000., value=0.0, step=self.sn_max*1000./20., title="Threshold [10e-3]")
+        slider = RangeSlider(start=0.0, end=self.sn_max*1000., value=(0.0, self.sn_max*1000.), step=self.sn_max*1000./20., title="Threshold [10e-3]")
         
         ## Slider Python callback
         def update_scatter(attr, old, new):
             # new = new slider value 
-            source.data = ColumnDataSource.from_df(self.dfs.loc[np.abs(self.dfs['slope']) >= 0.001*new ])
+            source.data = ColumnDataSource.from_df(self.dfs.loc[ (np.abs(self.dfs['slope']) >= 0.001*new[0]) &
+                                                                 (np.abs(self.dfs['slope']) <= 0.001*new[1]) ])
 
         slider.on_change('value', update_scatter)
         
@@ -193,7 +195,7 @@ class BokehPlot():
         ph = 200
         p2 = figure(plot_width=pw, plot_height=ph,
                    tools="pan,wheel_zoom,box_zoom,reset",
-                   output_backend="webgl", x_axis_type="datetime")
+                   output_backend="webgl", x_axis_type="datetime", title='---')
 
 
         p2.add_tools(
@@ -243,10 +245,6 @@ class BokehPlot():
             for ba in bottom_ba:
                 p2.add_layout(ba)
 
-            ## Plot name
-            #if tmin < 0.5*(v[1][1]+v[1][0]) < tmax:
-            #    t = plt.text(0.5*(v[1][1]+v[1][0]), 1.*dmax, v[0], horizontalalignment='center', fontsize=8)
-
 
         def update_ts(attr, old, new):
             """
@@ -274,6 +272,10 @@ class BokehPlot():
                 for ba in bottom_ba:
                     ba.top = int(ph/2)
                     ba.bottom = 0
+                
+                ## Update p2 title text with the name of the site
+                p2.title.text = 'SITE : {} (#{})'.format(source.data['NAME'][new[0]], source.data['id2'][new[0]])
+                
 
         source.selected.on_change('indices', update_ts)
 
@@ -315,15 +317,6 @@ if __name__.startswith('bokeh_app'):
 
 
     
-        
-
-
-
-
-
-
-
-
 
 
    
