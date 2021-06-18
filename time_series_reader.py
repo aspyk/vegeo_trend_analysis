@@ -466,8 +466,15 @@ class TimeSeriesExtractor():
  
     def _get_c3s_lai_fapar_points(self):
 
-        flag_layer = 'q'
-        flag_layer = 'r'
+        if 'QFLAG' in self.h5f.keys():
+            print('---qflag')
+            flag_layer = 'q'
+        elif 'retrieval_flag' in self.h5f.keys():
+            print('---retrieval_flag')
+            flag_layer = 'r'
+        else:
+            print('ERROR: no known quality flag found in h5 file.')
+            sys.exit()
 
         if flag_layer=='q':
             q_chunk = self._extract_points('QFLAG', np.uint8)
