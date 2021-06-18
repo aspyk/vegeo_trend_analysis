@@ -10,6 +10,7 @@ from scipy import optimize
 import datetime
 from itertools import cycle
 import pathlib
+import mankendall_fortran_repeat_exp2 as m
 
 from timeit import default_timer as timer
 import os,sys
@@ -372,7 +373,7 @@ def plot_breaks(break_list, dates, point_names, start, fig_size=(15/2.54, 4/2.54
 
     print('--- Plot graphs...')
     
-    from adjustText import adjust_text
+    #from adjustText import adjust_text
     
     date_lim = [pd.to_datetime(dates[0], unit='s'), pd.to_datetime(dates[-1], unit='s')]
     year_frac = [year_fraction(d) for d in date_lim]
@@ -421,21 +422,34 @@ def plot_breaks(break_list, dates, point_names, start, fig_size=(15/2.54, 4/2.54
                     ax1.plot(v['x'], v['y'], c='#1f77b4', lw=2) # actual data
                 if v['status']=='stop:pval':
                     ax1.plot(v['x'], v['y'], c='#ff7f0e', lw=2) # actual data
-                if v['status']=='stop:side':
+                if v['status']=='stop:edge':
                     ax1.plot(v['x'], v['y'], c='#9467bd', lw=2) # actual data
                 if v['status']=='stop:len':
                     ax1.plot(v['x'], v['y'], c='#2ca02c', ls=':') # actual data
                 if v['status']=='stop:nan':
                     ax1.plot(v['x'], v['y'], c='#d62728', ls=':') # actual data
+            
+            ## Plot the value of the slope over the segment
+            if not v['trend'].startswith('not_'):
+                #print('{} - {} (#{})'.format(v['trend'], point_names[idy_rel], idy))
+                idmean = round(0.5*(np.nanargmax(v['x'])+np.nanargmin(v['x'])))
+                ax1.annotate(v['trend'], xy=(v['x'][idmean], v['y'][idmean]), xycoords='data',
+                             xytext=(0, 10), textcoords='offset points', horizontalalignment='center')
+
+        ## Write the minimum at the bottom left
         ax1.annotate('{:.2}'.format(np.nanmin(res_dic[0]['y'])),
                      xy=(0., 0.),  xycoords='axes fraction',
                      xytext=(0., 0.), textcoords='axes fraction')
+        ## Write the maximum at the top left
         ax1.annotate('{:.2}'.format(np.nanmax(res_dic[0]['y'])),
                      xy=(0., 1.),  xycoords='axes fraction',
                      xytext=(0., 1.), textcoords='axes fraction', verticalalignment='top')
-        ax1.annotate(point_names[idy_rel],
+        ## Write the title
+        ax1.annotate('{} (#{})'.format(point_names[idy_rel], idy),
                      xy=(0., 1.),  xycoords='axes fraction',
                      xytext=(0., 1.05), textcoords='axes fraction', verticalalignment='baseline')
+
+
 
         ## use adjust_text library to fix overlapping text
         #adjust_text(texts_top, autoalign='x', expand_text=(1.5,1.2), force_text=(0.5, 0.25), avoid_points=False, va='top')
@@ -459,9 +473,7 @@ def plot_breaks(break_list, dates, point_names, start, fig_size=(15/2.54, 4/2.54
         plt.close(fig)
 
 
-
-
-def VITO_recursive_snht(cache_file_name, var_name, max_lvl=3, nan_threshold=0.3, nb_year_min=5, alpha=0.05, edge_buffer=0, plot_breaks=True, plot_size=(15/2.54, 4/2.54)):
+def VITO_recursive_snht(cache_file_name, var_name, max_lvl=3, nan_threshold=0.3, nb_year_min=5, alpha=0.05, edge_buffer=0, plot_snht=True, plot_size=(15/2.54, 4/2.54)):
 
     b_deb = 0
 
@@ -481,7 +493,7 @@ def VITO_recursive_snht(cache_file_name, var_name, max_lvl=3, nan_threshold=0.3,
             var = hf['vars']['AL_DH_BB'][:,0,start:end]
             #var = hf['vars']['LAI'][:,0,start:end]
             #var = hf['vars']['fAPAR'][:,0,start:end]
-            point_names = hf['meta']['point_names'][start:end]
+            point_names = [i.decode('utf8') for i in hf['meta']['point_names'][start:end]]
         else:
             var = hf['vars'][var_name][:,0,:]
             point_names = [i.decode('utf8') for i in hf['meta']['point_names'][:]]
@@ -519,12 +531,16 @@ def VITO_recursive_snht(cache_file_name, var_name, max_lvl=3, nan_threshold=0.3,
         
         break_list.append(res_dic)
     
-    
 
     ## Plot breaks
     ##----------------------------------- 
-    if plot_breaks:
-        plot_breaks(break_list, dates, point_names, start, fig_size)
+    apply_mk_test_on_valid_data(break_list)
+      
+
+    ## Plot breaks
+    ##----------------------------------- 
+    if plot_snht:
+        plot_breaks(break_list, dates, point_names, start)
 
 
     ## Flatten and format for a DataFrame
@@ -595,6 +611,7 @@ def recursive_snht_dict(x, y, dates=None, parent='1.1', max_lvl=3, nan_threshold
     snht = res[parent]['snht']
     #print(snht)
     if (snht['h']):
+        print(edge_buffer, snht['cp'])
         if edge_buffer < snht['cp'] < len(y)-edge_buffer:
             res[parent]['status'] = 'valid'
             if dates is not None:
@@ -605,45 +622,16 @@ def recursive_snht_dict(x, y, dates=None, parent='1.1', max_lvl=3, nan_threshold
             yb = y[snht['cp']:]
             nloc = int(name.split('.')[-1])
             res = {**res,
-                   **recursive_snht_dict(xa, ya, dates=dates, parent=parent+'/'+str(lvl+1)+'.'+str(nloc*2-1), max_lvl=max_lvl, nan_threshold=nan_threshold, nb_year_min=nb_year_min, alpha=alpha),
-                   **recursive_snht_dict(xb, yb, dates=dates, parent=parent+'/'+str(lvl+1)+'.'+str(nloc*2), max_lvl=max_lvl, nan_threshold=nan_threshold, nb_year_min=nb_year_min, alpha=alpha) }
+                   **recursive_snht_dict(xa, ya, dates=dates, parent=parent+'/'+str(lvl+1)+'.'+str(nloc*2-1), max_lvl=max_lvl, nan_threshold=nan_threshold, nb_year_min=nb_year_min, alpha=alpha, edge_buffer=edge_buffer),
+                   **recursive_snht_dict(xb, yb, dates=dates, parent=parent+'/'+str(lvl+1)+'.'+str(nloc*2), max_lvl=max_lvl, nan_threshold=nan_threshold, nb_year_min=nb_year_min, alpha=alpha, edge_buffer=edge_buffer) }
         else:
             print('Stop at node {} because break location is too close of the sides ( cp={:d} )'.format(name, snht['cp']))
-            res[parent]['status'] = 'stop:side'
+            res[parent]['status'] = 'stop:edge'
     else:
         print('Stop at node {} because snht test not significant ( p={:.3f} for p_max={})'.format(name, snht['p'], alpha))
         res[parent]['status'] = 'stop:pval'
-    return res
+    return res 
 
-
-def recursive_snht(x, y, ax, parent='root', max_lvl=3, nan_threshold=0.3, nb_year_min=5):
-    idr = '{:02x}'.format(random.getrandbits(8))
-    print('start {} (parent {})'.format(idr, parent))
-    col = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
-    lvl = parent.count('>')
-    if 0:
-        ax.plot(x, y+lvl, c=col[lvl])
-    else:
-        col = random.choice(col)
-        #cmap = matplotlib.cm.get_cmap('hsv')
-        #col = '#'+''.join(['{:02x}'.format(i) for i in np.round(255*np.array(cmap(random.random())[:3])).astype(int)])
-        ax.plot(x, y+lvl, c=col)
-    res = []
-    res.append(parent)
-    res.append(fast_snht_test(y, alpha=0.05))
-    print(res[-1])
-    #input()
-    print(res[-1].h, len(y), (~np.isnan(y)).sum()/len(y))
-    if (res[-1].h) and (len(y)>=36*nb_year_min) and (((~np.isnan(y)).sum()/len(y))>=(1-nan_threshold)) and (lvl<max_lvl):
-        ax.plot([x[res[-1].cp]]*2, [1+lvl, 2+lvl], c='r')
-        xa = x[:res[-1].cp]
-        xb = x[res[-1].cp:]
-        ya = y[:res[-1].cp]
-        yb = y[res[-1].cp:]
-        #res.append([recursive_snht(xa, ya, ax, parent=parent+'>'+idr), recursive_snht(xb, yb, ax, parent=parent+'>'+idr)])
-        res.append([recursive_snht(xa, ya, ax, parent=parent+'>'+str(lvl+1)+'a'), recursive_snht(xb, yb, ax, parent=parent+'>'+str(lvl+1)+'b')])
-    print('end', idr)
-    return res
 
 
 def fast_snht_test(x, alpha=0.05):
@@ -660,6 +648,29 @@ def fast_snht_test(x, alpha=0.05):
     
     return res_dic
 
+def apply_mk_test_on_valid_data(break_list):
+    for idy_rel,res_dic in enumerate(break_list):
+        for v in res_dic:
+            if v['status'] in ['stop:lvl', 'stop:pval', 'stop:edge']:
+                res_mk = mk_test(v['y'])
+                if res_mk[0]<=0.05:
+                    #print('ok', res_mk)
+                    v['trend'] = '{:.3e}'.format(res_mk[2])
+                else:
+                    #print('xx', res_mk)
+                    v['trend'] = 'not_significant'
+            else:
+                v['trend'] = 'not_computed'
+
+
+def mk_test(y):
+    n_zero = (y==0.0).sum()
+    #print("{:.4f} / {} / {} / {}".format(np.isnan(y).sum()/len(y), np.nanmin(y), np.nanmax(y), n_zero))
+    ## To avoid 0.0 tie that makes the sort algo of median fortran computation stuck in very long loops,
+    ## we add very low fake noise to all 0.0 values to allow the sort algo to perform efficiently.
+    y[y==0.0] = 1.e-6*np.random.rand(n_zero)
+    return m.mk_trend(len(y), np.arange(len(y)), y, 3)
+    
 def debug_func():
     x = np.array([1,1,1,2,2,2])
     res = fast_snht_test(x)
@@ -671,7 +682,7 @@ def main():
     #test_recursive_snht()
 
     #VITO_recursive_snht()
-    VITO_recursive_snht('/data/c3s_vol6/TEST_CNRM/remymf_test/vegeo_trend_analysis/output_extract/c3s_al_bbdh_MERGED/timeseries_198125_202017.h5', 'AL_DH_BB', max_lvl=4)
+    VITO_recursive_snht('/data/c3s_vol6/TEST_CNRM/remymf_test/vegeo_trend_analysis/output_extract/c3s_al_bbdh_MERGED/timeseries_198125_202017.h5', 'AL_DH_BB', max_lvl=4, nb_year_min=5, edge_buffer=36)
 
     #debug_func()
 
