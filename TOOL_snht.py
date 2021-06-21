@@ -471,11 +471,13 @@ def plot_breaks(break_list, dates, point_names, start, fig_size=(15/2.54, 4/2.54
         plt.tight_layout()
         plt.savefig('output_recursive_snht/output_snht_{:03d}.png'.format(idy))
         plt.close(fig)
+    
+    print('--- Plot OK.')
 
 
-def VITO_recursive_snht(cache_file_name, var_name, max_lvl=3, nan_threshold=0.3, nb_year_min=5, alpha=0.05, edge_buffer=0, plot_snht=True, plot_size=(15/2.54, 4/2.54)):
+def VITO_recursive_snht(cache_file_name, var_name, landval_input_csv, max_lvl=3, nan_threshold=0.3, nb_year_min=5, alpha=0.05, edge_buffer=0, plot_snht=True, plot_size=(15/2.54, 4/2.54)):
 
-    b_deb = 0
+    b_deb = 1
 
     ## Load data
     ##----------
@@ -532,7 +534,7 @@ def VITO_recursive_snht(cache_file_name, var_name, max_lvl=3, nan_threshold=0.3,
         break_list.append(res_dic)
     
 
-    ## Plot breaks
+    ## Apply MK test on time series segments
     ##----------------------------------- 
     apply_mk_test_on_valid_data(break_list)
       
@@ -540,7 +542,8 @@ def VITO_recursive_snht(cache_file_name, var_name, max_lvl=3, nan_threshold=0.3,
     ## Plot breaks
     ##----------------------------------- 
     if plot_snht:
-        plot_breaks(break_list, dates, point_names, start)
+        pass
+        #plot_breaks(break_list, dates, point_names, start)
 
 
     ## Flatten and format for a DataFrame
@@ -558,13 +561,16 @@ def VITO_recursive_snht(cache_file_name, var_name, max_lvl=3, nan_threshold=0.3,
 
     ## Create a dataframe
     df = pd.DataFrame(flat_res)
-    df = df.set_index(['point_name', 'name'])
+    df = df.drop(columns=['lvl']).rename(columns={'name':'lvl', 'point_name':'NAME'})
+    df = df.set_index(['NAME', 'lvl'])
     df['n_len'] = pd.to_numeric(df['n_len'], downcast='integer')
     df['bp_date'] = pd.to_datetime(df['bp_date'], unit='s')
 
     
-    ## Write output file
-    ##------------------
+    ## Write output files
+    ##-------------------
+
+    ### Write pickle dataframe
 
     input_file = pathlib.Path(input_file)
     output_path = pathlib.Path('./output_snht/') / input_file.parts[-2]
@@ -572,17 +578,42 @@ def VITO_recursive_snht(cache_file_name, var_name, max_lvl=3, nan_threshold=0.3,
     output_path.mkdir(parents=True, exist_ok=True)
     output_csv = output_path / input_file.parts[-1].replace('.h5', '_SNHT_break_test_{}.csv'.format(var_name))
     output_pickle = output_path / input_file.parts[-1].replace('.h5', '_SNHT_break_test_{}.pickle.gzip'.format(var_name))
-    
+    output_csv_plot = output_path / input_file.parts[-1].replace('.h5', '_SNHT_break_test_{}.plot.csv'.format(var_name))
     # Output to pickle with full data
     df.to_pickle(output_pickle)
-    # Drop some colums for csv
-    #print(df.drop(columns=['x', 'y']))
-    print(df.drop(columns=['x', 'y', 'child', 'parent']))
-    df = df.drop(columns=['x', 'y', 'child', 'parent'])
+    print('Pickle DataFrame saved to:', str(output_pickle))
     
+    ### Write csv dataframe    
+
+    # Drop some colums for csv
+    df = df.drop(columns=['x', 'y', 'child', 'parent'])
+    print(df)
     df.to_csv(output_csv, sep=';')
     print("--- SNHT break test result file saved to:\n{}".format(output_csv))
 
+    ### Write a csv formatted to be plot with the bokeh
+    
+    df["trend"] = pd.to_numeric(df["trend"], downcast="float", errors='coerce') # convert trend col to float/nan only
+    df = df.dropna(subset=['trend']).drop(columns=['n_len','status','h','cp','p','T','mu1','mu2','mag[%]','bp_date','nan[%]']) # drop some unused cols
+    ## Rename variables to fit the QMapp plotting app
+    df = df.sort_values(['NAME','trend'])
+    df = df.rename(columns={'trend':var_name+'_sn'})
+    df = df.reset_index(level=[1])
+    print(df)
+    ## Add lat/lon columns from input csv
+    df_latlon = pd.read_csv(landval_input_csv, sep=';', index_col=3, comment='#')
+    df_toplot = pd.merge(df, df_latlon, on='NAME')
+
+    ## Open directly a path object
+    with output_csv_plot.open('w') as fcsv:
+        # Write some comment before the data
+        fcsv.write('#input_extract_cache_file:{}\n'.format(pathlib.Path(input_file).relative_to(pathlib.Path.cwd())))
+        fcsv.write('#input_breaks_pickle_file:{}\n'.format(output_pickle))
+        fcsv.write('#var:{}\n'.format(var_name))
+        df_toplot.to_csv(fcsv, sep=';')
+    print('CSV results saved to:', str(output_csv_plot))
+
+    
 
 def recursive_snht_dict(x, y, dates=None, parent='1.1', max_lvl=3, nan_threshold=0.3, nb_year_min=5, alpha=0.05, edge_buffer=0):
     lvl = parent.count('/')+1
@@ -682,7 +713,10 @@ def main():
     #test_recursive_snht()
 
     #VITO_recursive_snht()
-    VITO_recursive_snht('/data/c3s_vol6/TEST_CNRM/remymf_test/vegeo_trend_analysis/output_extract/c3s_al_bbdh_MERGED/timeseries_198125_202017.h5', 'AL_DH_BB', max_lvl=4, nb_year_min=5, edge_buffer=36)
+    VITO_recursive_snht('/data/c3s_vol6/TEST_CNRM/remymf_test/vegeo_trend_analysis/output_extract/c3s_al_bbdh_MERGED/timeseries_198125_202017.h5',
+                        'AL_DH_BB',
+                        '/data/c3s_vol6/TEST_CNRM/remymf_test/vegeo_trend_analysis/LANDVAL_v1.1.csv',
+                        max_lvl=4, nb_year_min=5, edge_buffer=36)
 
     #debug_func()
 

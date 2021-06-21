@@ -45,6 +45,7 @@ class BokehPlot():
         dw = lon[-1]-lon[0]
         dh = lat[0]-lat[-1]
         
+
         self.dfs = pd.DataFrame.from_dict(data=dict(LONGITUDE=[], LATITUDE=[], NAME=[], slope=[], id2=[]))
         
         p = figure(plot_width=int(400.*dw/dh), plot_height=400, match_aspect=True,
@@ -71,25 +72,32 @@ class BokehPlot():
 
         ##--- Select CSV file to read
         
-        def upload_input_data(attr, old, new):
+        def upload_input_csv(attr, old, new):
             ## Read, decode and save input data to tmp file
             print("Data upload succeeded")
             print("file_input.filename=", file_input.filename)
             data = base64.b64decode(file_input.value).decode('utf8')
-            #print(data)
-            #print(len(data.split('\n')))
             with open(self.app_dir/'data/tmp_input.csv', 'w') as f:
                 f.write(data)
             
-            ## Get csv meta data
+            ## Get csv meta data and init plot
             meta = {l.split(':')[0]:l.split(':')[1] for l in data.split('\n') if l.startswith('#')}
             self.hf = h5py.File(self.app_dir/'data'/meta['#input_extract_cache_file'], 'r')
-            # Get date range from csv file name
-            self.dates = [dt.datetime.strptime(i, '%Y%m%d') for i in file_input.filename.split('.')[0].split('_')[-2:]]
+            if '#input_breaks_pickle_file' in meta.keys():
+                self.b_breaks = True
+                self.df_breaks = pd.read_pickle(self.app_dir/'data'/meta['#input_breaks_pickle_file'])
+                # Init line to display timeseries segment
+                segment_line = p2.line(x='dates', y='var', source=segment_source, line_color='red')
+            else:
+                self.b_breaks = False
+            # Get date range from h5 file 
+            self.dates = self.hf['meta/ts_dates'][:].view('datetime64[s]').tolist()
+            self.point_names = [i.decode('utf8') for i in self.hf['meta/point_names'][:]]
+            d_init = [d for d in self.dates if d.year != 1970] # Some date are set to 1970 (ie stored as 0 ? to be checked)
+            ts_source.data = dict(dates=d_init, var=np.zeros_like(d_init))
             
             ## Read tmp file and update select widget with available variables
-            df = pd.read_csv(self.app_dir/'data/tmp_input.csv', sep=';', index_col=0, comment='#')
-            df['id2'] = np.arange(df.shape[0])
+            df = pd.read_csv(self.app_dir/'data/tmp_input.csv', sep=';', comment='#')
             in_var = [i for i in df.columns if i.endswith('_sn')]
             df = df.dropna(subset=in_var)
             in_var = [i.replace('_sn','') for i in in_var]
@@ -99,14 +107,13 @@ class BokehPlot():
             select.value = in_var[0]
 
 
-            
             ## If there is only one variable in the csv, plot it directly
             if len(in_var)==1:
                 read_data_for_plotting(in_var[0])
 
 
         file_input = FileInput(accept=".csv") # comma separated list if any
-        file_input.on_change('value', upload_input_data)
+        file_input.on_change('value', upload_input_csv)
         
         ## Add variable selection
         def select_variable(attr, old, new):
@@ -130,17 +137,20 @@ class BokehPlot():
         def read_data_for_plotting(var):
             ## Get the variable from the input h5 cache file
             self.ts = self.hf['vars/'+var][:,0,:].T
-            self.dates = self.hf['meta/ts_dates'][:].view('datetime64[s]').tolist()
-            d_init = [d for d in self.dates if d.year != 1970] # Some date are set to 1970 (ie stored as 0 ? to be checked)
-            ts_source.data = dict(dates=d_init, var=np.zeros_like(d_init))
 
             ## Get data from input csv
             var = var + '_sn'
-            df = pd.read_csv(self.app_dir/'data/tmp_input.csv', sep=';', index_col=0, comment='#')
-            df['id2'] = np.arange(df.shape[0])
+            df = pd.read_csv(self.app_dir/'data/tmp_input.csv', sep=';', comment='#')
+            id_sites_in_cache_file = {s:i for i,s in enumerate(self.point_names)}
+            df['id2'] = df['NAME'].map(id_sites_in_cache_file)
             df = df.dropna(subset=[var])
 
-            self.dfs = df[['LONGITUDE', 'LATITUDE', 'NAME', var, 'id2']]
+            if self.b_breaks:
+                self.dfs = df[['LONGITUDE', 'LATITUDE', 'NAME', var, 'id2', 'lvl']]
+            else:
+                self.dfs = df[['LONGITUDE', 'LATITUDE', 'NAME', var, 'id2']]
+                self.dfs['lvl'] = np.zeros_like(self.dfs[var])
+
             self.dfs = self.dfs.rename(columns={var:'slope'})
 
             source.data = ColumnDataSource.from_df(self.dfs)
@@ -157,7 +167,7 @@ class BokehPlot():
         ##--- Add scatter
 
         ## Create source that will be populated according to slider
-        source = ColumnDataSource(data=dict(LONGITUDE=[], LATITUDE=[], NAME=[], slope=[], id2=[]))
+        source = ColumnDataSource(data=dict(LONGITUDE=[], LATITUDE=[], NAME=[], slope=[], id2=[], lvl=[]))
         #source = ColumnDataSource(dfs)
 
         scatter_renderer = p.scatter(x='LONGITUDE', y='LATITUDE', size=12,
@@ -178,7 +188,7 @@ class BokehPlot():
 
         ##--- Add slider
 
-        slider = RangeSlider(start=0.0, end=self.sn_max*1000., value=(0.0, self.sn_max*1000.), step=self.sn_max*1000./20., title="Threshold [10e-3]")
+        slider = RangeSlider(start=0.0, end=self.sn_max*1000., value=(0.0, self.sn_max*1000.), step=self.sn_max*1000./20., title="Slope threshold [10e-3]")
         
         ## Slider Python callback
         def update_scatter(attr, old, new):
@@ -210,6 +220,8 @@ class BokehPlot():
         #ts_source = ColumnDataSource(data=dict(dates=[], var=[]))
         d_init = [dt.datetime(1981,9,20), dt.datetime(2020,6,30)]
         ts_source = ColumnDataSource(data=dict(dates=d_init, var=np.zeros_like(d_init)))
+        segment_source = ColumnDataSource(data=dict(dates=d_init, var=np.zeros_like(d_init)))
+        # Full timeseries line
         p2.line(x='dates', y='var', source=ts_source)
         
 
@@ -260,9 +272,13 @@ class BokehPlot():
                 print(p2.y_range.start, p2.y_range.end, p2.y_scale)
 
             if len(new)>0:
-                ## Update line
-                site_id = source.data['id2'][new[0]]
+                ## Update line with the last index because this is the last drawn point that is visible
+                site_id = int(source.data['id2'][new[-1]])
                 ts_source.data = dict(dates=self.dates, var=self.ts[site_id])
+                if self.b_breaks:
+                    multi_idx = (source.data['NAME'][new[-1]], str(source.data['lvl'][new[-1]]))
+                    segment_slice = self.df_breaks.loc[multi_idx]['x'].astype('int')
+                    segment_source.data = dict(dates=[self.dates[i] for i in segment_slice], var=self.ts[site_id][segment_slice])
                 
                 ## Update BoxAnnotation
                 ph = p2.inner_height
@@ -274,7 +290,7 @@ class BokehPlot():
                     ba.bottom = 0
                 
                 ## Update p2 title text with the name of the site
-                p2.title.text = 'SITE : {} (#{})'.format(source.data['NAME'][new[0]], source.data['id2'][new[0]])
+                p2.title.text = 'SITE : {} (#{})'.format(source.data['NAME'][new[-1]], source.data['id2'][new[-1]])
                 
 
         source.selected.on_change('indices', update_ts)
