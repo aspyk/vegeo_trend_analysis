@@ -86,8 +86,14 @@ class BokehPlot():
             if '#input_breaks_pickle_file' in meta.keys():
                 self.b_breaks = True
                 self.df_breaks = pd.read_pickle(self.app_dir/'data'/meta['#input_breaks_pickle_file'])
-                # Init line to display timeseries segment
+                ## Init line to display timeseries segment
+                # timeseries segment
                 segment_line = p2.line(x='dates', y='var', source=segment_source, line_color='red')
+                # vertical lines for breaks
+                p2.segment(x0="x", y0="y0", x1="x", y1="y1", line_color="black", line_dash='dashed', line_width=2, source=breaks_source)
+                # Add bottom horizontal line
+                #p2.line(x="x", y="y0", line_color="#fb8072", line_width=2, source=breaks_source)
+                #p2.diamond(x="x", y="y0", color="#fb8072", size=12, source=breaks_source)
             else:
                 self.b_breaks = False
             # Get date range from h5 file 
@@ -221,6 +227,7 @@ class BokehPlot():
         d_init = [dt.datetime(1981,9,20), dt.datetime(2020,6,30)]
         ts_source = ColumnDataSource(data=dict(dates=d_init, var=np.zeros_like(d_init)))
         segment_source = ColumnDataSource(data=dict(dates=d_init, var=np.zeros_like(d_init)))
+        breaks_source = ColumnDataSource(data=dict(x=[], y0=[], y1=[]))
         # Full timeseries line
         p2.line(x='dates', y='var', source=ts_source)
         
@@ -251,11 +258,10 @@ class BokehPlot():
             else:
                 bottom_ba.append(BoxAnnotation(top=int(ph/2), top_units='screen', bottom=0, bottom_units='screen',
                                    left=v[1][0], right=v[1][1], fill_alpha=0.2, fill_color=color))
-        if 1:
-            for ba in top_ba:
-                p2.add_layout(ba)
-            for ba in bottom_ba:
-                p2.add_layout(ba)
+        for ba in top_ba:
+            p2.add_layout(ba)
+        for ba in bottom_ba:
+            p2.add_layout(ba)
 
 
         def update_ts(attr, old, new):
@@ -276,9 +282,17 @@ class BokehPlot():
                 site_id = int(source.data['id2'][new[-1]])
                 ts_source.data = dict(dates=self.dates, var=self.ts[site_id])
                 if self.b_breaks:
+                    ## Add segment
                     multi_idx = (source.data['NAME'][new[-1]], str(source.data['lvl'][new[-1]]))
                     segment_slice = self.df_breaks.loc[multi_idx]['x'].astype('int')
                     segment_source.data = dict(dates=[self.dates[i] for i in segment_slice], var=self.ts[site_id][segment_slice])
+                    ## Add breaks
+                    xb = [pd.to_datetime(i) for i in self.df_breaks.loc[source.data['NAME'][new[-1]]]['bp_date'].values if not pd.isnull(i)]
+                    # Add first and last dates
+                    xb = [pd.to_datetime(self.dates[0])] + xb + [pd.to_datetime(self.dates[-1])]
+                    y0b = np.nanmin(self.ts[site_id]) * np.ones(len(xb))
+                    y1b = np.nanmax(self.ts[site_id]) * np.ones(len(xb))
+                    breaks_source.data = dict(x=xb, y0=y0b, y1=y1b)
                 
                 ## Update BoxAnnotation
                 ph = p2.inner_height
