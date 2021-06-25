@@ -3,7 +3,7 @@ import numpy as np
 from bokeh.io import save, curdoc
 from bokeh.plotting import figure
 from bokeh.layouts import column
-from bokeh.models import CustomJS, ColumnDataSource, HoverTool, TapTool, BoxAnnotation, FileInput, Select, RangeSlider
+from bokeh.models import CustomJS, ColumnDataSource, HoverTool, TapTool, BoxAnnotation, FileInput, Select, RangeSlider, DateRangeSlider
 
 import base64 # To read the output of the FileInput widget
 
@@ -138,7 +138,7 @@ class BokehPlot():
                 palette=('#FFFFFF', '#EEEEEE', '#DDDDDD', '#CCCCCC', '#BBBBBB', '#AAAAAA', '#999999', '#888888'), level="image")
         p.grid.grid_line_width = 0.5
     
-        ##--- Read csv, filter and convert to ColumnDataSource
+        ##--- Read selected data, filter and convert to ColumnDataSource
 
         def read_data_for_plotting(var):
             ## Get the variable from the input h5 cache file
@@ -146,16 +146,18 @@ class BokehPlot():
 
             ## Get data from input csv
             var = var + '_sn'
-            df = pd.read_csv(self.app_dir/'data/tmp_input.csv', sep=';', comment='#')
+            df = pd.read_csv(self.app_dir/'data/tmp_input.csv', sep=';', comment='#', parse_dates=['start_date', 'end_date'])
             id_sites_in_cache_file = {s:i for i,s in enumerate(self.point_names)}
             df['id2'] = df['NAME'].map(id_sites_in_cache_file)
             df = df.dropna(subset=[var])
 
             if self.b_breaks:
-                self.dfs = df[['LONGITUDE', 'LATITUDE', 'NAME', var, 'id2', 'lvl']]
+                self.dfs = df[['LONGITUDE', 'LATITUDE', 'NAME', var, 'id2', 'lvl', 'start_date', 'end_date']]
             else:
                 self.dfs = df[['LONGITUDE', 'LATITUDE', 'NAME', var, 'id2']]
                 self.dfs['lvl'] = np.zeros_like(self.dfs[var])
+                self.dfs['start_date'] = np.zeros_like(self.dfs[var])
+                self.dfs['end_date'] = np.zeros_like(self.dfs[var])
 
             self.dfs = self.dfs.rename(columns={var:'slope'})
 
@@ -168,12 +170,19 @@ class BokehPlot():
             slider.end = self.sn_max*1000.
             slider.step = self.sn_max*1000./20.
             slider.value = (0.0, self.sn_max*1000.)
+            slider.disabled=False
+            slider.bar_color='#e6e6e6'
         
+            if self.b_breaks:
+                slider_date.start = self.dates[0]
+                slider_date.end = self.dates[-1]
+                slider_date.value = (self.dates[0], self.dates[-1])
+                slider_date.visible = True
         
         ##--- Add scatter
 
         ## Create source that will be populated according to slider
-        source = ColumnDataSource(data=dict(LONGITUDE=[], LATITUDE=[], NAME=[], slope=[], id2=[], lvl=[]))
+        source = ColumnDataSource(data=dict(LONGITUDE=[], LATITUDE=[], NAME=[], slope=[], id2=[], lvl=[], start_date=[], end_date=[]))
         #source = ColumnDataSource(dfs)
 
         scatter_renderer = p.scatter(x='LONGITUDE', y='LATITUDE', size=12,
@@ -194,15 +203,23 @@ class BokehPlot():
 
         ##--- Add slider
 
-        slider = RangeSlider(start=0.0, end=self.sn_max*1000., value=(0.0, self.sn_max*1000.), step=self.sn_max*1000./20., title="Slope threshold [10e-3]")
-        
+        slider = RangeSlider(start=0.0, end=self.sn_max*1000., value=(0.0, self.sn_max*1000.), step=self.sn_max*1000./20., title="Slope threshold [10e-3]", disabled=True)
+        slider_date = DateRangeSlider(title="Date range: ", start=dt.date(1981, 1, 1), end=dt.date.today(), value=(dt.date(1981, 1, 1), dt.date.today()), step=1, visible=False)
+
         ## Slider Python callback
         def update_scatter(attr, old, new):
             # new = new slider value 
-            source.data = ColumnDataSource.from_df(self.dfs.loc[ (np.abs(self.dfs['slope']) >= 0.001*new[0]) &
-                                                                 (np.abs(self.dfs['slope']) <= 0.001*new[1]) ])
+            #source.data = ColumnDataSource.from_df(self.dfs.loc[ (np.abs(self.dfs['slope']) >= 0.001*new[0]) &
+                                                                 #(np.abs(self.dfs['slope']) <= 0.001*new[1]) ])
+            slope_sel = slider.value
+            date_sel = [pd.to_datetime(d, unit='ms') for d in slider_date.value]
+            source.data = ColumnDataSource.from_df(self.dfs.loc[ (np.abs(self.dfs['slope']) >= 0.001*slope_sel[0]) &
+                                                                 (np.abs(self.dfs['slope']) <= 0.001*slope_sel[1]) &
+                                                                 (self.dfs['start_date'] >= date_sel[0]) &
+                                                                 (self.dfs['end_date'] <= date_sel[1]) ])
 
         slider.on_change('value', update_scatter)
+        slider_date.on_change('value', update_scatter)
         
         ##--- Add time series of selected point      
         
@@ -316,7 +333,7 @@ class BokehPlot():
 
         ##--- Serve the file
         
-        curdoc().add_root(column(file_input, select, slider, p, p2))
+        curdoc().add_root(column(file_input, select, slider, slider_date, p, p2))
         curdoc().title = "Quality monitoring"
 
     def test_image(self):
