@@ -7,7 +7,7 @@ import h5py
 import pandas as pd
 from scipy import interpolate
 from scipy import optimize
-import datetime
+import datetime as dt
 from itertools import cycle
 import pathlib
 import mankendall_fortran_repeat_exp2 as m
@@ -71,8 +71,8 @@ def snht(xin, return_array=False):
         return T.max(), idx[tloc], nvalid, nnan, mu1, mu2, ((mu2-mu1)/mu1)*100
 
 def year_fraction(date):
-    start = datetime.date(date.year, 1, 1).toordinal()
-    year_length = datetime.date(date.year+1, 1, 1).toordinal() - start
+    start = dt.date(date.year, 1, 1).toordinal()
+    year_length = dt.date(date.year+1, 1, 1).toordinal() - start
     return date.year + float(date.toordinal() - start) / year_length
 
 def mc_p_value(n, sim): 
@@ -115,9 +115,9 @@ def create_mc_cache(nmin=10, nmax=1600, sim=20000):
     res_root = []
     for n in range(nmin, nmax):
 
-        t0 = datetime.datetime.now()
+        t0 = dt.datetime.now()
         res = mc_p_value(n, sim)[:,0]
-        print(n, datetime.datetime.now()-t0)
+        print(n, dt.datetime.now()-t0)
         mc_cache[n-nmin] = res
 
     print('--- Save h5 file')
@@ -154,9 +154,9 @@ def test_fake_data():
         res_root = []
         for n in range(nmin, nmax):
 
-            t0 = datetime.datetime.now()
+            t0 = dt.datetime.now()
             res = mc_p_value(n, sim)[:,0]
-            print(n, datetime.datetime.now()-t0)
+            print(n, dt.datetime.now()-t0)
             mc_cache[n-nmin] = res
             continue
 
@@ -225,7 +225,7 @@ def test_real_data():
     
     al = hf['vars']['AL_DH_BB'][:,0,:]
     dates = hf['meta']['ts_dates'][:]
-    dates_formatted = np.array([datetime.datetime.fromtimestamp(x).strftime('%Y%m%d') for x in dates])
+    dates_formatted = np.array([dt.datetime.fromtimestamp(x).strftime('%Y%m%d') for x in dates])
     point_names = hf['meta']['point_names'][:]
 
     ## Return full T array or not
@@ -477,7 +477,7 @@ def plot_breaks(break_list, dates, point_names, start, fig_size=(15/2.54, 4/2.54
 
 def VITO_recursive_snht(cache_file_name, var_name, landval_input_csv, max_lvl=3, nan_threshold=0.3, nb_year_min=5, alpha=0.05, edge_buffer=0, plot_snht=True, plot_size=(15/2.54, 4/2.54)):
 
-    b_deb = 1
+    b_deb = 0
 
     ## Load data
     ##----------
@@ -542,8 +542,7 @@ def VITO_recursive_snht(cache_file_name, var_name, landval_input_csv, max_lvl=3,
     ## Plot breaks
     ##----------------------------------- 
     if plot_snht:
-        pass
-        #plot_breaks(break_list, dates, point_names, start)
+        plot_breaks(break_list, dates, point_names, start)
 
 
     ## Flatten and format for a DataFrame
@@ -565,6 +564,10 @@ def VITO_recursive_snht(cache_file_name, var_name, landval_input_csv, max_lvl=3,
     df = df.set_index(['NAME', 'lvl'])
     df['n_len'] = pd.to_numeric(df['n_len'], downcast='integer')
     df['bp_date'] = pd.to_datetime(df['bp_date'], unit='s')
+    if 'start_date' in df.keys():
+        df['start_date'] = pd.to_datetime(df['start_date'], unit='s')
+        df['end_date'] = pd.to_datetime(df['end_date'], unit='s')
+
 
     
     ## Write output files
@@ -626,6 +629,12 @@ def recursive_snht_dict(x, y, dates=None, parent='1.1', max_lvl=3, nan_threshold
     res = {}
     n_nan = np.isnan(y).sum()/len(y)
     base = {'x':x, 'y':y, 'lvl':lvl, 'parent':p, 'name':name, 'child':[], 'nan[%]':n_nan*100, 'n_len':len(y)}
+    if dates is not None:
+        base['start_date'] = dates[x[0]]
+        base['end_date'] = dates[x[-1]]
+    else:
+        base['start_idx'] = x[0]
+        base['end_idx'] = x[-1]
     if len(y)<=36*nb_year_min:
         print('Stop at node {} because data length is too short ({} instead of {} min)'.format(name, len(y), 36*nb_year_min))
         res[parent] = {'status':'stop:len', **base}
@@ -713,10 +722,22 @@ def main():
     #test_recursive_snht()
 
     #VITO_recursive_snht()
-    VITO_recursive_snht('/data/c3s_vol6/TEST_CNRM/remymf_test/vegeo_trend_analysis/output_extract/c3s_al_bbdh_MERGED/timeseries_198125_202017.h5',
-                        'AL_DH_BB',
-                        '/data/c3s_vol6/TEST_CNRM/remymf_test/vegeo_trend_analysis/LANDVAL_v1.1.csv',
-                        max_lvl=4, nb_year_min=5, edge_buffer=36)
+
+    wkdir = pathlib.Path('/data/c3s_vol6/TEST_CNRM/remymf_test/vegeo_trend_analysis/')
+    if 0:
+        extract_file = wkdir/'output_extract/c3s_al_bbdh_MERGED/timeseries_198125_202017.h5'
+        vars = ['AL_DH_BB', 'AL_DH_VI', 'AL_DH_NI']
+    elif 1:
+        extract_file = wkdir/'output_extract/c3s_lai_MERGED/timeseries_198125_202017.h5'
+        vars = ['LAI']
+    elif 0:
+        extract_file = wkdir/'output_extract/c3s_fapar_MERGED/timeseries_198125_202017.h5'
+        vars = ['fAPAR']
+
+    for var in vars:
+        VITO_recursive_snht(extract_file, var,
+                            '/data/c3s_vol6/TEST_CNRM/remymf_test/vegeo_trend_analysis/LANDVAL_v1.1.csv',
+                            max_lvl=4, nb_year_min=5, edge_buffer=36, plot_snht=False)
 
     #debug_func()
 
