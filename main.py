@@ -84,7 +84,7 @@ class Main():
                             required=True)    
         parser.add_argument('-a','--action',
                             help='Action to run between extract, group, trend, plot',
-                            choices=['extract', 'merge', 'trend', 'join', 'plot'],
+                            choices=['extract', 'merge', 'trend', 'join', 'plot', 'snht'],
                             nargs='+',
                             required=True)
         parser.add_argument('-n_master','--master_chunk',
@@ -287,6 +287,19 @@ class Main():
                     list_arg = [prod, self.chunks, title, self.yfile]
                     trend_file_merger.plot_trends_scatter(*list_arg)
     
+        #------------------------------------------------#
+        # SNHT
+        #------------------------------------------------#
+        if 'snht' in self.args.action:
+            print_section('Compute MK test on break analysis')
+    
+            import TOOL_snht
+    
+            for prod in self.products:
+                print('  Process {0}'.format(prod.name))
+                    
+                list_arg = [prod, self.yfile]
+                TOOL_snht.QMmodule(*list_arg)
 
 if __name__ == "__main__":
     

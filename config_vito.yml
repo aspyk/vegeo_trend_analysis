@@ -143,20 +143,23 @@ c3s_al_spbh_SENTINEL3:
  # --------
  
 c3s_lai_AVHRR:
-    root: '/data/c3s_pdf_live/MTDA/C3S_LAI_Global_4KM_V1/V1.0.1'
+    #root: '/data/c3s_pdf_live/MTDA/C3S_LAI_Global_4KM_V1/V1.0.1'
+    root: '/data/c3s_pdf_live/MTDA/C3S_LAI_Global_4KM_V3/V3.0.1'
     <<: *param
     <<: &varlai
         var:
             - 'LAI'
 
 c3s_lai_VGT:
+    #root: '/data/c3s_pdf_live/MTDA/C3S_LAI_Global_1KM_V1/V1.0.1'
     #root: '/data/c3s_pdf_live/MTDA/C3S_LAI_Global_1KM_V2/V2.0.1'
-    root: '/data/c3s_pdf_live/MTDA/C3S_LAI_Global_1KM_V1/V1.0.1'
+    root: '/data/c3s_pdf_live/MTDA/C3S_LAI_Global_1KM_V3/V3.0.1'
     <<: *param
     <<: *varlai
     
 c3s_lai_PROBAV:
-    root: '/data/c3s_pdf_live/MTDA/C3S_LAI_Global_1KM_V2/V2.0.1'
+    #root: '/data/c3s_pdf_live/MTDA/C3S_LAI_Global_1KM_V2/V2.0.1'
+    root: '/data/c3s_pdf_live/MTDA/C3S_LAI_Global_1KM_V3/V3.0.1'
     <<: *param
     <<: *varlai
 
@@ -164,20 +167,23 @@ c3s_lai_PROBAV:
  # --------
  
 c3s_fapar_AVHRR:
-    root: '/data/c3s_pdf_live/MTDA/C3S_FAPAR_Global_4KM_V1/V1.0.1'
+    #root: '/data/c3s_pdf_live/MTDA/C3S_FAPAR_Global_4KM_V1/V1.0.1'
+    root: '/data/c3s_pdf_live/MTDA/C3S_FAPAR_Global_4KM_V3/V3.0.1'
     <<: *param
     <<: &varfapar
         var:
             - 'fAPAR'
 
 c3s_fapar_VGT:
+    #root: '/data/c3s_pdf_live/MTDA/C3S_FAPAR_Global_1KM_V1/V1.0.1'
     #root: '/data/c3s_pdf_live/MTDA/C3S_FAPAR_Global_1KM_V2/V2.0.1'
-    root: '/data/c3s_pdf_live/MTDA/C3S_FAPAR_Global_1KM_V1/V1.0.1'
+    root: '/data/c3s_pdf_live/MTDA/C3S_FAPAR_Global_1KM_V3/V3.0.1'
     <<: *param
     <<: *varfapar
     
 c3s_fapar_PROBAV:
-    root: '/data/c3s_pdf_live/MTDA/C3S_FAPAR_Global_1KM_V2/V2.0.1'
+    #root: '/data/c3s_pdf_live/MTDA/C3S_FAPAR_Global_1KM_V2/V2.0.1'
+    root: '/data/c3s_pdf_live/MTDA/C3S_FAPAR_Global_1KM_V3/V3.0.1'
     <<: *param
     <<: *varfapar
 
@@ -189,6 +195,7 @@ output_path:
     merge: './output_merge'
     trend: './output_trend'
     plot: './output_plot'
+    snht: './output_snht'
     merged_filename: 'merged_trends.nc'
 
  # Input file with reference site coordinates

@@ -477,7 +477,7 @@ def plot_breaks(break_list, dates, point_names, start, fig_size=(15/2.54, 4/2.54
 
 def VITO_recursive_snht(cache_file_name, var_name, landval_input_csv, max_lvl=3, nan_threshold=0.3, nb_year_min=5, alpha=0.05, edge_buffer=0, plot_snht=True, plot_size=(15/2.54, 4/2.54)):
 
-    b_deb = 0
+    b_deb = 0 # Set to 1 to load a hardcoded dataset and process only few sites to debug quickly
 
     ## Load data
     ##----------
@@ -598,14 +598,17 @@ def VITO_recursive_snht(cache_file_name, var_name, landval_input_csv, max_lvl=3,
     
     df["trend"] = pd.to_numeric(df["trend"], downcast="float", errors='coerce') # convert trend col to float/nan only
     df = df.dropna(subset=['trend']).drop(columns=['n_len','status','h','cp','p','T','mu1','mu2','mag[%]','bp_date','nan[%]']) # drop some unused cols
-    ## Rename variables to fit the QMapp plotting app
+    ## Sort data to group by site and sort by trend to display biggest trend when scatter points overlap.
+    # We use these three lines to make it work with pandas 0.22.0 (version with py35 on VITO VM) and newer version (tested with 1.1.5 in a py36 env).
+    df = df.reset_index()
     df = df.sort_values(['NAME','trend'])
+    df = df.set_index(['NAME'])
+    ## Rename variables to fit the QMapp plotting app
     df = df.rename(columns={'trend':var_name+'_sn'})
-    df = df.reset_index(level=[1])
     print(df)
     ## Add lat/lon columns from input csv
     df_latlon = pd.read_csv(landval_input_csv, sep=';', index_col=3, comment='#')
-    df_toplot = pd.merge(df, df_latlon, on='NAME')
+    df_toplot = pd.merge(df, df_latlon, left_index=True, right_index=True)
 
     ## Open directly a path object
     with output_csv_plot.open('w') as fcsv:
@@ -723,23 +726,38 @@ def main():
 
     #VITO_recursive_snht()
 
-    wkdir = pathlib.Path('/data/c3s_vol6/TEST_CNRM/remymf_test/vegeo_trend_analysis/')
     if 0:
-        extract_file = wkdir/'output_extract/c3s_al_bbdh_MERGED/timeseries_198125_202017.h5'
+        extract_file = 'output_extract/c3s_al_bbdh_MERGED/timeseries_198125_202017.h5'
         vars = ['AL_DH_BB', 'AL_DH_VI', 'AL_DH_NI']
     elif 1:
-        extract_file = wkdir/'output_extract/c3s_lai_MERGED/timeseries_198125_202017.h5'
+        extract_file = 'output_extract/c3s_lai_MERGED/timeseries_198125_202017.h5'
         vars = ['LAI']
     elif 0:
-        extract_file = wkdir/'output_extract/c3s_fapar_MERGED/timeseries_198125_202017.h5'
+        extract_file = 'output_extract/c3s_fapar_MERGED/timeseries_198125_202017.h5'
         vars = ['fAPAR']
 
+    extract_file = pathlib.Path(extract_file).resolve() # meka path absolute
     for var in vars:
         VITO_recursive_snht(extract_file, var,
                             '/data/c3s_vol6/TEST_CNRM/remymf_test/vegeo_trend_analysis/LANDVAL_v1.1.csv',
                             max_lvl=4, nb_year_min=5, edge_buffer=36, plot_snht=False)
 
     #debug_func()
+
+def QMmodule(product, config):
+    
+    list_of_paths = (pathlib.Path(config['output_path']['extract']) / product.name).glob('*')
+    latest_path = max(list_of_paths, key=lambda p: p.stat().st_ctime)
+    input_file = latest_path.resolve()
+
+    print('INFO: Read {}'.format(input_file))
+
+    ## Read vars in time series file
+    hf = h5py.File(input_file, 'r')
+    
+    for invar in hf['vars'].keys():
+        VITO_recursive_snht(input_file, invar, config['ref_site_coor']['AVHRR'],
+                            max_lvl=4, nb_year_min=5, edge_buffer=36, plot_snht=False)
 
 if __name__=='__main__':
     main()

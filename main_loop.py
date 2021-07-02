@@ -61,7 +61,7 @@ def get_product_list(products, sensors):
     return res
 
 def make_cmd_args(products, start='1981-01-01', end=datetime.datetime.now().strftime('%Y-%m-%d'),
-                  actions=['extract', 'merge', 'trend', 'plot'], conf_file='config_vito.yml', extra_flags=''):
+                  actions=['extract', 'merge', 'trend', 'plot', 'snht'], conf_file='config_vito.yml', extra_flags=''):
     """Make the command line for the pipeline"""
     dic = {}
     dic['-t0'] = start
