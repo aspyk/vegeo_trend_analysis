@@ -36,7 +36,7 @@ author: "Remy Fransen, Blanca Mateo Herrera"
 
 <a name="objectiveofthetool"></a>
 ## Objective of the tool
-The objective of the tool is to compute albedo, LAI and FAPAR trends based on Mann Kendall test on copernicus v2 data. This tool will used about every 6 months in order to update the trend.
+The objective of the tool is to compute albedo, LAI and FAPAR trends based on Mann Kendall test on copernicus v2 data. Time ranges used for the trend computation can be the full range given by the user or sub-ranges coming from a break analysis. This tool will used about every 6 months in order to update the trend.
 
 <a name="usage"></a>
 ## Usage
@@ -194,6 +194,7 @@ output_path:
     merge: './output_merge'
     trend: './output_trend'
     plot: './output_plot'
+    snht: './output_snht'
     merged_filename: 'merged_trends.nc'
 
  # Input file with reference site coordinates
@@ -229,16 +230,17 @@ CSV files are written at the same time as the PNG files and simply export numeri
 
 <a name="corepipeline"></a>
 ### Core pipeline
-The core pipeline is made up of 4 modules communicating together only using cache files. These modules are as follow:
+The core pipeline is made up of 5 modules communicating together only using cache files. These modules are as follow:
 - reading module
 - merging module
 - trend module
 - plotting module
+- break test (SNHT)
 
 The following section is dedicated to their detailed description. A flowchart summarizing the whole structure is given below:
 
 <figure style="text-align:center">
-  <img src="./img/input_output_overview.png" alt="input_output_overview.png"/>
+  <img src="./img/input_output_overview_snht.png" alt="input_output_overview.png"/>
   <figcaption>Flowchart of all the modules with their inputs and outputs.</figcaption>
 </figure>
 
@@ -417,26 +419,6 @@ python file: **trend_file_merger.py**
 
 Nothing specific here, simple plotting function.
 
-#### Output format
-
-<a name="summaryofthemodulestructure"></a>
-### Summary of the module structure
-
-<figure style="text-align:center">
-  <img src="./img/pipeline_overview.png" alt="pipeline_overview.png"/>
-  <figcaption>Summary of modules actions.</figcaption>
-</figure>
-
-The following figure give a detailed call graph of the previous flowchart for the case with following arguments:
-```
--t0 1981-01-01 -t1 2020-12-31 -i latloncsv:config -p c3s_al_bbdh_AVHRR c3s_al_bbdh_VGT c3s_al_bbdh_PROBAV -a extract merge trend plot --config config_vito.yml
-```
-Note that this case has been hardcoded in the main file `main_loop.py` only for example purpose and concerns only the albedo BB_DH product. In a normal mode all products would be processed by the code.
-
-<figure style="text-align:center">
-  <img src="./img/full_call_graph.png" alt="call_graph.png"/>
-  <figcaption>Call graph of the code with python, input and output files.</figcaption>
-</figure>
 
 <a name="breakanalysis"></a>
 ###  Break analysis with Standard Normal Homogeinity Test (SNHT)
@@ -484,8 +466,7 @@ name: Identifier of the test. Identifiers up to max_lvl = 3 are shown in Figure 
 - `lvl` : Integer, ≥ 1. Level of the test.
 - `mu1` : Mean of the first sub time series determined by cp. For time series x, mu1 is the mean of x[:cp].
 - `mu2` : Mean of the second sub time series determined by cp. For time series x, mu2 is the mean of x[cp:].
-- `mag[%]` : Magnitude of the break, given as the percent change of mu2 compared to mu1. It is calculated as follows:
-mag=µ_2- µ_1µ1·100
+- `mag[%]` : Magnitude of the break, given as the percent change of mu2 compared to mu1. It is calculated as follows: mag = 100 * (mu2 - mu1) / mu1
 - `n_len` : Integer. Length of the time series under analysis. 
 - `nan[%]` : Percentage of missing values in the time series. 
 - `p` : p-value of the test.  
@@ -512,6 +493,30 @@ The break analysis outputs three files for different usages of the results. A sa
 - A CSV file (`<prefix>.csv`) corresponding to the human readable version of the pickle file, without `x`, `y`, `child`, `parent` columns.
 - A simplified CSV file (`<prefix>.plot.csv`) to be used with the interactive Bokeh plotting tool. It contains only the significant trend values with latitude/longitude coordinates.
 
+
+<a name="summaryofthemodulestructure"></a>
+### Summary of the module structure
+
+<figure style="text-align:center">
+  <img src="./img/pipeline_overview_snht.png" alt="pipeline_overview_snht.png"/>
+  <figcaption>Summary of modules actions.</figcaption>
+</figure>
+
+The following figure give a detailed call graph of the previous flowchart for the case with following arguments:
+```
+-t0 1981-01-01 -t1 2020-12-31 -i latloncsv:config -p c3s_al_bbdh_AVHRR c3s_al_bbdh_VGT c3s_al_bbdh_PROBAV -a extract merge trend plot snht --config config_vito.yml
+```
+Note that this case has been hardcoded in the main file `main_loop.py` only for example purpose and concerns only the albedo BB_DH product. In a normal mode all products would be processed by the code.
+
+<figure style="text-align:center">
+  <img src="./img/full_call_graph.png" alt="call_graph.png"/>
+  <figcaption>Call graph of the code with python, input and output files, without SNHT.</figcaption>
+</figure>
+
+<figure style="text-align:center">
+  <img src="./img/full_call_graph_snht.png" alt="call_graph_snht.png"/>
+  <figcaption>SNHT part of the call graph.</figcaption>
+</figure>
 
 <a name="faq"></a>
 ## FAQ
