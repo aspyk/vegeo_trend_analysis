@@ -146,15 +146,19 @@ class BokehPlot():
 
             ## Get data from input csv
             var = var + '_sn'
-            df = pd.read_csv(self.app_dir/'data/tmp_input.csv', sep=';', comment='#', parse_dates=['start_date', 'end_date'])
+            if self.b_breaks:
+                df = pd.read_csv(self.app_dir/'data/tmp_input.csv', sep=';', comment='#', parse_dates=['start_date', 'end_date'])
+            else:
+                df = pd.read_csv(self.app_dir/'data/tmp_input.csv', sep=';', comment='#')
             id_sites_in_cache_file = {s:i for i,s in enumerate(self.point_names)}
             df['id2'] = df['NAME'].map(id_sites_in_cache_file)
             df = df.dropna(subset=[var])
 
             if self.b_breaks:
-                self.dfs = df[['LONGITUDE', 'LATITUDE', 'NAME', var, 'id2', 'lvl', 'start_date', 'end_date']]
+                # better use loc[] to select part of a df that will be modified afterward to be sure to have a copy
+                self.dfs = df.loc[:, ['LONGITUDE', 'LATITUDE', 'NAME', var, 'id2', 'lvl', 'start_date', 'end_date']]
             else:
-                self.dfs = df[['LONGITUDE', 'LATITUDE', 'NAME', var, 'id2']]
+                self.dfs = df.loc[:, ['LONGITUDE', 'LATITUDE', 'NAME', var, 'id2']]
                 self.dfs['lvl'] = np.zeros_like(self.dfs[var])
                 self.dfs['start_date'] = np.zeros_like(self.dfs[var])
                 self.dfs['end_date'] = np.zeros_like(self.dfs[var])
@@ -170,8 +174,8 @@ class BokehPlot():
             slider.end = self.sn_max*1000.
             slider.step = self.sn_max*1000./20.
             slider.value = (0.0, self.sn_max*1000.)
-            slider.disabled=False
-            slider.bar_color='#e6e6e6'
+            #slider.disabled=False
+            #slider.bar_color='#e6e6e6'
         
             if self.b_breaks:
                 slider_date.start = self.dates[0]
@@ -203,7 +207,7 @@ class BokehPlot():
 
         ##--- Add slider
 
-        slider = RangeSlider(start=0.0, end=self.sn_max*1000., value=(0.0, self.sn_max*1000.), step=self.sn_max*1000./20., title="Slope threshold [10e-3]", disabled=True)
+        slider = RangeSlider(start=0.0, end=self.sn_max*1000., value=(0.0, self.sn_max*1000.), step=self.sn_max*1000./20., title="Trend threshold [10e-3]")
         slider_date = DateRangeSlider(title="Date range: ", start=dt.date(1981, 1, 1), end=dt.date.today(), value=(dt.date(1981, 1, 1), dt.date.today()), step=1, visible=False)
 
         ## Slider Python callback
@@ -211,12 +215,17 @@ class BokehPlot():
             # new = new slider value 
             #source.data = ColumnDataSource.from_df(self.dfs.loc[ (np.abs(self.dfs['slope']) >= 0.001*new[0]) &
                                                                  #(np.abs(self.dfs['slope']) <= 0.001*new[1]) ])
-            slope_sel = slider.value
-            date_sel = [pd.to_datetime(d, unit='ms') for d in slider_date.value]
-            source.data = ColumnDataSource.from_df(self.dfs.loc[ (np.abs(self.dfs['slope']) >= 0.001*slope_sel[0]) &
-                                                                 (np.abs(self.dfs['slope']) <= 0.001*slope_sel[1]) &
-                                                                 (self.dfs['start_date'] >= date_sel[0]) &
-                                                                 (self.dfs['end_date'] <= date_sel[1]) ])
+            if self.b_breaks:
+                slope_sel = slider.value
+                date_sel = [pd.to_datetime(d, unit='ms') for d in slider_date.value]
+                source.data = ColumnDataSource.from_df(self.dfs.loc[ (np.abs(self.dfs['slope']) >= 0.001*slope_sel[0]) &
+                                                                     (np.abs(self.dfs['slope']) <= 0.001*slope_sel[1]) &
+                                                                     (self.dfs['start_date'] >= date_sel[0]) &
+                                                                     (self.dfs['end_date'] <= date_sel[1]) ])
+            else:
+                slope_sel = slider.value
+                source.data = ColumnDataSource.from_df(self.dfs.loc[ (np.abs(self.dfs['slope']) >= 0.001*slope_sel[0]) &
+                                                                     (np.abs(self.dfs['slope']) <= 0.001*slope_sel[1]) ])
 
         slider.on_change('value', update_scatter)
         slider_date.on_change('value', update_scatter)

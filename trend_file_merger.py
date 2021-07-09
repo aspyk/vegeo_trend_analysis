@@ -150,7 +150,7 @@ def plot_trends(product, chunks, plot_name, plot_choice, config):
     """
     
     import matplotlib.pyplot as plt
-    # import cartopy.crs as ccrs # not find on VITO ?
+    import cartopy.crs as ccrs # not find on VITO ?
     from mpl_toolkits.axes_grid1 import make_axes_locatable
     from matplotlib.transforms import Bbox
     
@@ -435,7 +435,7 @@ def plot_trends_scatter(product, chunks, plot_name, config):
         for rvar in res_vars:
             chunks.site_coor[invar+'_'+rvar] = trends[rvar]
     
-    csv_path = output_path/'{}.csv'.format(case_name)
+    csv_path = output_path/'{}.plot.csv'.format(case_name)
     ## Open directly a path object
     with csv_path.open('w') as fcsv:
         # Write some comment before the data
