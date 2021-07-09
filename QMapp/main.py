@@ -118,7 +118,7 @@ class BokehPlot():
                 read_data_for_plotting(in_var[0])
 
 
-        file_input = FileInput(accept=".csv") # comma separated list if any
+        file_input = FileInput(accept=".plot.csv") # comma separated list if any
         file_input.on_change('value', upload_input_csv)
         
         ## Add variable selection
