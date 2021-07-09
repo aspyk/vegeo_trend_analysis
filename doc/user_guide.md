@@ -31,6 +31,7 @@ author: "Remy Fransen, Blanca Mateo Herrera"
     1. [Plotting module](#plottingmodule)
     1. [Break analysis](#breakanalysis)
     1. [Summary of the module structure](#summaryofthemodulestructure)
+1. [Interactive plotting tool](#interactiveplottingtool)
 1. [FAQ](#faq)
 1. [References](#references)
 
@@ -518,6 +519,26 @@ Note that this case has been hardcoded in the main file `main_loop.py` only for 
   <figcaption>SNHT part of the call graph.</figcaption>
 </figure>
 
+
+<a name="interactiveplottingtool"></a>
+## Interactive plotting tool
+The previous pipeline can produce images to show the results of the trends analysis, but to explore them more easily an interactive plotting tool has been developed with the python bokeh library. The usage is the following:
+
+1. Run the bokeh server: 
+```
+bokeh serve --show QMapp
+```
+1. In the web app that opens, load an output `*.plot.csv` file written by the pipeline.
+1. Choose a variable (if there is only one variable in the csv file it is automatically selected). All the data are displayed in a scatter plot colored by the trend value on the map.
+1. Use the *Trend threshold* slide to select a particular range of trend values. The scatter plot will update accordingly to plot only reference sites within this range.
+1. Only available with a SNHT output csv file, use the *Date range* slide to select a time range. Since a time series may have been divided into several segments by the SNHT, several trend values may be plotted for one site and so corresponding scatter points would overlap. The selected date range may help for this allowing to display only segments within this time range.
+1. Finally, clicking on one point will plot the full time series on the bottom area with sensor date range and breaks, if any.
+
+<figure style="text-align:center">
+  <img src="./img/bokeh_app.png" alt="bokeh_app.png"/>
+  <figcaption>Bokeh interactive plotting tool.</figcaption>
+</figure>
+
 <a name="faq"></a>
 ## FAQ
 
@@ -528,8 +549,6 @@ You can change the output paths in the last section of the YAML config file (`co
 - How to change the QFLAG filtering ?
 
 Aggregation are done in the `_get_c3s_albedo_points()` or `_get_c3s_lai_fapar_points()` method (depending on the product) of the `TimeSeriesExtractor` class in the `time_series_reader.py` file. Note that you may implement your own filtering method and call it in the `extract_product()` method as it is done for the two previous ones. See more details in this [section](#aggregation).
-
-
 
 
 <a name="references"></a>
