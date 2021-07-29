@@ -524,10 +524,15 @@ Note that this case has been hardcoded in the main file `main_loop.py` only for 
 ## Interactive plotting tool
 The previous pipeline can produce images to show the results of the trends analysis, but to explore them more easily an interactive plotting tool has been developed with the python bokeh library. The usage is the following:
 
-1. Run the bokeh server: 
-```
-bokeh serve --show QMapp
-```
+1. Run the bokeh server. If you want to run the server locally, just type: 
+    ```
+    bokeh serve --show QMapp
+    ```
+    If you run the server remotely (let be the local `host0` with you browser and the remote `host1` with the server), you have to allow remote connection with this option on `host1` (you can get your `host1` real name using the linux command `hostname`):
+    ```
+    bokeh serve --allow-websocket-origin=host1:5006 QMapp
+    ```
+    Then on your browser on `host0`, navigate to the address host1:5006/QMapp.
 1. In the web app that opens, load an output `*.plot.csv` file written by the pipeline.
 1. Choose a variable (if there is only one variable in the csv file it is automatically selected). All the data are displayed in a scatter plot colored by the trend value on the map.
 1. Use the *Trend threshold* slide to select a particular range of trend values. The scatter plot will update accordingly to plot only reference sites within this range.
