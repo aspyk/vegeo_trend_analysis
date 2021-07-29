@@ -46,7 +46,14 @@ The objective of the tool is to compute albedo, LAI and FAPAR trends based on Ma
 ### Setup
 
 #### Clone and fortran compilation
-Clone the `dev` version:
+Clone the repository and setup the requirements:
+```properties
+git clone https://github.com/aspyk/vegeo_trend_analysis.git
+cd vegeo_trend_analysis/
+./run_setup.sh
+```
+
+Or you can also clone the `dev` version if required like this:
 ```properties
 git clone --single-branch --branch dev https://github.com/aspyk/vegeo_trend_analysis
 cd vegeo_trend_analysis/
