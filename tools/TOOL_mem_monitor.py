@@ -9,11 +9,11 @@ import datetime as dt
 def parse_args():
     """
     Simply parse args given into one continuous string like this:
-    key1=value1:key2=value2:etc.
+    key1=value1,key2=value2,etc.
     Return the corresponding dict
     """
     if len(sys.argv)==2:
-        kwargs = {i.split('=')[0]:i.split('=')[1] for i in sys.argv[-1].split(':')}
+        kwargs = {i.split('=')[0]:i.split('=')[1] for i in sys.argv[-1].split(',')}
     
         for k,v in kwargs.items():
             print('-- {} : {}'.format(k,v))
@@ -27,14 +27,14 @@ def parse_args():
 class MemoryMonitor:
     """
     Usage:
-    python TOOL_mem_monitor.py [t=<time>]:[r=<rate>]
+    python TOOL_mem_monitor.py [t=<time>],[r=<rate>]
 
     With:
         -t : the tool will monitor the memory for <time> seconds.
         -r : the tool will probe the memory each <rate> seconds.
 
     Example:
-    python TOOL_mem_monitor.py t=20:r=0.1
+    python TOOL_mem_monitor.py t=20,r=0.1
     """
     def __init__(self, **kwargs):
         for key in kwargs:
@@ -60,7 +60,7 @@ class MemoryMonitor:
         print('Start memory monitoring... (CTRL+C to break the loop)')
 
         t0 = dt.datetime.now()
-        print(t0)  
+        print(f'START: {t0}')  
 
         self.mem_total = psutil.virtual_memory().total
 
@@ -73,14 +73,14 @@ class MemoryMonitor:
                 time.sleep(self.r)
         except KeyboardInterrupt:
             pass
-        
-        self.log = np.array(self.log)
 
         t1 = dt.datetime.now()
-        print(t1)
+        print(f'STOP: {t1}')  
         self.elapsed = t1-t0
-        print(self.elapsed)
-        print(self.elapsed.total_seconds())
+        #print(self.elapsed.total_seconds())
+        print(f'Monitoring duration: {self.elapsed}')
+        
+        self.log = np.array(self.log)
 
         fname = 'res_mem_monitor_{}.png'.format(t0.strftime('%Y%m%d_%H%M'))
         self.plot(fname=fname)
