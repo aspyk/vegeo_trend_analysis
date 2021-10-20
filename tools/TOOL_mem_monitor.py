@@ -55,13 +55,27 @@ class MemoryMonitor:
 
         self.n = int(self.t/self.r)
 
+        print(f'record time: {self.t}s')
+        print(f'sample rate: {self.r}s')
+        print('Start memory monitoring... (CTRL+C to break the loop)')
+
         t0 = dt.datetime.now()
         print(t0)  
 
-        for i in range(self.n):
-            self.log.append(psutil.virtual_memory().percent)
-            time.sleep(self.r)
+        self.mem_total = psutil.virtual_memory().total
+
+        ## Add a try block to be able to break the for loop with ctrl+C
+        try:
+            for i in range(self.n):
+                # .percent = (.total - .available) / .total * 100
+                #self.log.append(psutil.virtual_memory().percent)
+                self.log.append(self.mem_total-psutil.virtual_memory().available)
+                time.sleep(self.r)
+        except KeyboardInterrupt:
+            pass
         
+        self.log = np.array(self.log)
+
         t1 = dt.datetime.now()
         print(t1)
         self.elapsed = t1-t0
@@ -70,7 +84,17 @@ class MemoryMonitor:
 
         fname = 'res_mem_monitor_{}.png'.format(t0.strftime('%Y%m%d_%H%M'))
         self.plot(fname=fname)
-        print('### Results save to {}.png'.format(fname))
+        print('### Results save to {}'.format(fname))
+
+    def get_bytes_unit(self, size):
+        # 2**10 = 1024
+        power = 2**10
+        n = 0
+        power_labels = {0 : '', 1: 'k', 2: 'M', 3: 'G', 4: 'T'}
+        while size > power:
+            size /= power
+            n += 1
+        return n, power_labels[n]
 
     def plot(self, fname='res_mem_monitor'):
 
@@ -79,16 +103,25 @@ class MemoryMonitor:
         if not isinstance(axs, np.ndarray):
             axs = np.array([axs])
         axs = axs.ravel()
+        
+        time = (self.elapsed.total_seconds()*np.arange(self.n)/self.n)[:len(self.log)]
 
-        axs[0].plot(self.elapsed.total_seconds()*np.arange(self.n)/self.n, self.log)
+        axs[0].plot(time, 100*self.log/self.mem_total)
+
+        # first axis in percent, second in bytes
+        ax2 = axs[0].twinx()
+        mn, mx = axs[0].get_ylim()
+        power, unit = self.get_bytes_unit(0.01*mx*self.mem_total)
+        ax2.set_ylim(0.01*mn*self.mem_total/1024**power, 0.01*mx*self.mem_total/1024**power)
 
         axs[0].set_xlabel('time [s]')
-        axs[0].set_ylabel('memory used [%]')
+        axs[0].set_ylabel('[%]')
+        ax2.set_ylabel(f'[{unit}bytes]')
         axs[0].grid()
-        #plt.show()
-        plt.savefig(fname)
+        axs[0].set_title(f'Memory usage - Total {psutil._common.bytes2human(self.mem_total)}')
 
-        os.system('feh ' + fname)
+        #plt.show()
+        plt.savefig(fname, bbox_inches='tight')
 
 if __name__=='__main__':
 
